@@ -38,6 +38,7 @@ export const STATUS_LABELS: Record<string, string> = {
   in_progress: 'In Progress',
   done: 'Done',
   claimed: 'Claimed',
+  cancelled: 'Cancelled',
 };
 
 export const STATUS_COLORS: Record<string, string> = {
@@ -45,6 +46,7 @@ export const STATUS_COLORS: Record<string, string> = {
   in_progress: 'text-amber-600 bg-amber-50',
   done: 'text-emerald-600 bg-emerald-50',
   claimed: 'text-zinc-400 bg-zinc-100',
+  cancelled: 'text-red-500 bg-red-50',
 };
 
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
