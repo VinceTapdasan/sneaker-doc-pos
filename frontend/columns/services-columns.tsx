@@ -4,6 +4,13 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { TrashIcon, PencilSimpleIcon, CheckIcon, XIcon } from '@phosphor-icons/react';
 import { formatPeso } from '@/lib/utils';
 import { toTitleCase } from '@/utils/text';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { Service } from '@/lib/types';
 
 interface EditForm {
@@ -61,14 +68,15 @@ export const createServicesColumns = ({
       const s = row.original;
       if (editId === s.id) {
         return (
-          <select
-            value={form.type}
-            onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as 'primary' | 'add_on' }))}
-            className="text-sm border border-zinc-200 rounded px-2 py-1 focus:outline-none"
-          >
-            <option value="primary">Primary</option>
-            <option value="add_on">Add-on</option>
-          </select>
+          <Select value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: v as 'primary' | 'add_on' }))}>
+            <SelectTrigger className="h-8 text-sm w-28 border-zinc-200">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="primary">Primary</SelectItem>
+              <SelectItem value="add_on">Add-on</SelectItem>
+            </SelectContent>
+          </Select>
         );
       }
       return (
