@@ -110,32 +110,18 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div>
-      <div className='flex flex-row justify-between items-center'>
-        <PageHeader
-          title={`Transaction #${txn.number}`}
-          subtitle={`Created ${formatDatetime(txn.createdAt)}`}
-          backButton={
-            <Link href="/transactions">
-              <Button variant="ghost" size="sm">
-                <ArrowLeftIcon size={14} />
-              </Button>
-            </Link>
-          }
-        />
+      <PageHeader
+        title={`Transaction #${txn.number}`}
+        subtitle={`Created ${formatDatetime(txn.createdAt)}`}
+        backButton={
+          <Link href="/transactions">
+            <Button variant="ghost" size="sm">
+              <ArrowLeftIcon size={14} />
+            </Button>
+          </Link>
+        }
+      />
 
-        {(txn.items?.length ?? 0) > 1 && (() => {
-          const items = txn.items ?? [];
-          const allDone = items.every((i) => ['done', 'claimed'].includes(i.status));
-          const allCancelled = items.every((i) => i.status === 'cancelled');
-          const overallStatus = allDone ? 'done' : allCancelled ? 'cancelled' : 'in_progress';
-          return (
-            <div className="flex flex-col items-end gap-2 -mt-4 mb-6 pr-2">
-              <span className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">Overall Status</span>
-              <StatusBadge status={overallStatus} className="px-3.5 py-1 text-sm" />
-            </div>
-          );
-        })()}
-      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: items */}
         <div className="lg:col-span-2 space-y-4">
