@@ -16,6 +16,13 @@ import {
   useUpcomingPickupsQuery,
   useDailyStatsQuery,
 } from '@/hooks/useTransactionsQuery';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useMonthlyExpensesQuery } from '@/hooks/useExpensesQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { PageHeader } from '@/components/ui/page-header';
@@ -51,11 +58,11 @@ export default function DashboardPage() {
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
 
-  const { data: reportTxns = [] } = useTransactionReportQuery(year, month, { enabled: isAdmin });
-  const { data: dailyTxns = [] } = useDailyStatsQuery();
+  const { data: reportTxns = [], isLoading: reportLoading } = useTransactionReportQuery(year, month, { enabled: isAdmin });
+  const { data: dailyTxns = [], isLoading: dailyLoading } = useDailyStatsQuery();
   const { data: recentTxns = [] } = useRecentTransactionsQuery(20);
   const { data: upcomingPickups = [] } = useUpcomingPickupsQuery();
-  const { data: expenses = [] } = useMonthlyExpensesQuery(year, month, { enabled: isAdmin });
+  const { data: expenses = [], isLoading: expensesLoading } = useMonthlyExpensesQuery(year, month, { enabled: isAdmin });
 
   const quickActions = ALL_QUICK_ACTIONS.filter((a) => !a.adminOnly || isAdmin);
 
@@ -106,24 +113,26 @@ export default function DashboardPage() {
         action={
           isAdmin ? (
             <div className="flex items-center gap-2">
-              <select
-                value={month}
-                onChange={(e) => setMonth(parseInt(e.target.value, 10))}
-                className="px-3 py-1.5 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none"
-              >
-                {MONTHS.map((m, i) => (
-                  <option key={i} value={i + 1}>{m}</option>
-                ))}
-              </select>
-              <select
-                value={year}
-                onChange={(e) => setYear(parseInt(e.target.value, 10))}
-                className="px-3 py-1.5 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none"
-              >
-                {[2024, 2025, 2026].map((y) => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
+              <Select value={String(month)} onValueChange={(v) => setMonth(parseInt(v, 10))}>
+                <SelectTrigger className="h-9 text-sm w-32 border-zinc-200">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MONTHS.map((m, i) => (
+                    <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={String(year)} onValueChange={(v) => setYear(parseInt(v, 10))}>
+                <SelectTrigger className="h-9 text-sm w-24 border-zinc-200">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[2024, 2025, 2026].map((y) => (
+                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           ) : null
         }
@@ -148,16 +157,20 @@ export default function DashboardPage() {
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
             {[
-              { label: 'Transactions', value: filtered.length, mono: false },
+              { label: 'Transactions', value: String(filtered.length), mono: false },
               { label: 'Total Revenue', value: formatPeso(monthlyStats.totalRevenue), mono: true },
               { label: 'Total Collected', value: formatPeso(monthlyStats.totalPaid), mono: true },
               { label: 'Outstanding', value: formatPeso(monthlyStats.totalBalance), mono: true },
             ].map(({ label, value, mono }) => (
               <div key={label} className="bg-white border border-zinc-200 rounded-lg p-5">
                 <p className="text-xs text-zinc-400 mb-1">{label}</p>
-                <p className={`text-2xl font-semibold text-zinc-950 ${mono ? 'font-mono' : ''}`}>
-                  {value}
-                </p>
+                {reportLoading ? (
+                  <div className="h-8 w-24 bg-zinc-100 rounded animate-pulse mt-1" />
+                ) : (
+                  <p className={`text-2xl font-semibold text-zinc-950 ${mono ? 'font-mono' : ''}`}>
+                    {value}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -197,9 +210,15 @@ export default function DashboardPage() {
               <div className="bg-white border border-zinc-200 rounded-lg p-5">
                 <h2 className="text-sm font-semibold text-zinc-950 mb-1">Expenses</h2>
                 <p className="text-xs text-zinc-400 mb-2">Month total</p>
-                <p className="text-2xl font-mono font-semibold text-zinc-950">{formatPeso(totalExpenses)}</p>
-                {expenses.length > 0 && (
-                  <p className="text-xs text-zinc-400 mt-1">{expenses.length} entries</p>
+                {expensesLoading ? (
+                  <div className="h-8 w-24 bg-zinc-100 rounded animate-pulse" />
+                ) : (
+                  <>
+                    <p className="text-2xl font-mono font-semibold text-zinc-950">{formatPeso(totalExpenses)}</p>
+                    {expenses.length > 0 && (
+                      <p className="text-xs text-zinc-400 mt-1">{expenses.length} entries</p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -211,16 +230,20 @@ export default function DashboardPage() {
       {!isAdmin && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
           {[
-            { label: 'Transactions Today', value: dailyStats.count, mono: false },
+            { label: 'Transactions Today', value: String(dailyStats.count), mono: false },
             { label: "Today's Revenue", value: formatPeso(dailyStats.totalRevenue), mono: true },
             { label: 'Collected Today', value: formatPeso(dailyStats.totalPaid), mono: true },
             { label: 'Outstanding', value: formatPeso(dailyStats.totalBalance), mono: true },
           ].map(({ label, value, mono }) => (
             <div key={label} className="bg-white border border-zinc-200 rounded-lg p-5">
               <p className="text-xs text-zinc-400 mb-1">{label}</p>
-              <p className={`text-2xl font-semibold text-zinc-950 ${mono ? 'font-mono' : ''}`}>
-                {value}
-              </p>
+              {dailyLoading ? (
+                <div className="h-8 w-24 bg-zinc-100 rounded animate-pulse mt-1" />
+              ) : (
+                <p className={`text-2xl font-semibold text-zinc-950 ${mono ? 'font-mono' : ''}`}>
+                  {value}
+                </p>
+              )}
             </div>
           ))}
         </div>
