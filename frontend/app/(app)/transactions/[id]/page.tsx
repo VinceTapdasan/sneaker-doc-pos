@@ -18,6 +18,13 @@ import {
 } from '@/components/ui/select';
 import { DataTable } from '@/components/ui/data-table';
 import { Spinner } from '@/components/ui/spinner';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { createTransactionItemColumns } from '@/columns/transaction-items-columns';
 import {
   useTransactionDetailQuery,
@@ -33,7 +40,7 @@ import type { TransactionStatus, PaymentMethod } from '@/lib/types';
 
 export default function TransactionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentError, setPaymentError] = useState('');
@@ -81,8 +88,9 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     [loadingItemIds],
   );
   const addPaymentMut = useAddPaymentMutation(id, () => {
-    setShowPaymentForm(false);
+    setPaymentDialogOpen(false);
     setPaymentAmount('');
+    setPaymentError('');
   });
 
   if (isLoading) {
@@ -268,14 +276,28 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               size="sm"
               className="w-full mt-4"
               disabled={balance <= 0}
-              onClick={() => { setShowPaymentForm((v) => !v); setPaymentError(''); }}
+              onClick={() => { setPaymentDialogOpen(true); setPaymentError(''); }}
             >
               <PlusIcon size={13} />
               {balance <= 0 ? 'Fully Paid' : 'Add Payment'}
             </Button>
+          </div>
 
-            {showPaymentForm && (
-              <div className="mt-3 space-y-2.5 pt-3 border-t border-zinc-100">
+          <Dialog
+            open={paymentDialogOpen}
+            onOpenChange={(open) => {
+              setPaymentDialogOpen(open);
+              if (!open) { setPaymentAmount(''); setPaymentError(''); }
+            }}
+          >
+            <DialogContent className="bg-white sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="text-base">Record Payment</DialogTitle>
+                <DialogDescription className="text-xs text-zinc-400">
+                  #{txn.number} — Balance: <span className="font-mono font-medium text-amber-600">{formatPeso(balance)}</span>
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 pt-1">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-zinc-700">Method</label>
                   <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
@@ -302,6 +324,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                       paymentError ? 'border-red-400' : 'border-zinc-200',
                     )}
                     placeholder="0.00"
+                    autoFocus
                   />
                   {paymentError && (
                     <p className="text-xs text-red-500">{paymentError}</p>
@@ -309,6 +332,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                 </div>
                 <Button
                   size="sm"
+                  variant="dark"
                   className="w-full"
                   disabled={!paymentAmount || addPaymentMut.isPending}
                   onClick={() => {
@@ -327,8 +351,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                   {addPaymentMut.isPending ? <Spinner /> : 'Record Payment'}
                 </Button>
               </div>
-            )}
-          </div>
+            </DialogContent>
+          </Dialog>
 
           {/* Payment history */}
           {txn.payments && txn.payments.length > 0 && (
