@@ -2,8 +2,15 @@
 
 import { type ColumnDef } from '@tanstack/react-table';
 import { CameraIcon } from '@phosphor-icons/react';
-import { formatPeso, STATUS_LABELS } from '@/lib/utils';
+import { formatPeso } from '@/lib/utils';
 import { toTitleCase } from '@/utils/text';
+import { StatusBadge } from '@/components/ui/status-badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from '@/components/ui/select';
 import type { TransactionItem, ItemStatus } from '@/lib/types';
 
 interface TransactionItemColumnsOptions {
@@ -16,8 +23,8 @@ const ITEM_STATUSES: ItemStatus[] = ['pending', 'in_progress', 'done', 'claimed'
 function ImageCell({ url, label, onImageClick }: { url: string | null; label: string; onImageClick?: (url: string, label: string) => void }) {
   if (!url) {
     return (
-      <div className="w-9 h-9 rounded border border-dashed border-zinc-200 flex items-center justify-center">
-        <CameraIcon size={14} className="text-zinc-300" />
+      <div className="w-9 h-9 rounded border border-dashed border-zinc-300 flex items-center justify-center bg-zinc-50">
+        <CameraIcon size={14} className="text-zinc-400" />
       </div>
     );
   }
@@ -57,18 +64,32 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick }: T
   {
     accessorKey: 'status',
     header: 'Status',
-    cell: ({ row }) => (
-      <select
-        value={row.original.status}
-        onChange={(e) => onStatusChange(row.original.id, e.target.value as ItemStatus)}
-        className="text-xs bg-transparent border-0 text-zinc-700 focus:outline-none cursor-pointer"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {ITEM_STATUSES.map((s) => (
-          <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-        ))}
-      </select>
-    ),
+    cell: ({ row }) => {
+      const locked = ['cancelled', 'claimed'].includes(row.original.status);
+      if (locked) {
+        return <StatusBadge status={row.original.status} />;
+      }
+      return (
+        <Select
+          value={row.original.status}
+          onValueChange={(v) => onStatusChange(row.original.id, v as ItemStatus)}
+        >
+          <SelectTrigger
+            className="h-auto border-0 bg-transparent shadow-none p-0 gap-1.5 focus-visible:ring-0 w-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <StatusBadge status={row.original.status} />
+          </SelectTrigger>
+          <SelectContent>
+            {ITEM_STATUSES.filter((s) => !['cancelled', 'claimed'].includes(s)).map((s) => (
+              <SelectItem key={s} value={s}>
+                <StatusBadge status={s} />
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    },
   },
   {
     accessorKey: 'price',
