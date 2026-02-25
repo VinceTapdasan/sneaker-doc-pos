@@ -35,7 +35,7 @@ const schema = z.object({
   customerName: z.string().optional(),
   customerPhone: z.string().min(1, 'Phone number is required'),
   customerEmail: z.string().min(1, 'Email is required').email('Invalid email format'),
-  pickupDate: z.string().optional(),
+  pickupDate: z.string().min(1, 'Pickup date is required'),
   promoId: z.string().optional(),
   note: z.string().optional(),
   items: z.array(itemSchema).min(1, 'Add at least one item'),
@@ -389,6 +389,9 @@ export function NewTransactionForm() {
                     type="date"
                     {...register('pickupDate')}
                   />
+                  {errors.pickupDate && (
+                    <p className="text-xs text-red-500">{errors.pickupDate.message}</p>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-zinc-700">Promo Code</label>
