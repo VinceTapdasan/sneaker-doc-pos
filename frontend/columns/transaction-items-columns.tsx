@@ -74,13 +74,10 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick }: T
           value={row.original.status}
           onValueChange={(v) => onStatusChange(row.original.id, v as ItemStatus)}
         >
-          <SelectTrigger
-            className="h-auto border-0 bg-transparent shadow-none p-0 gap-1.5 focus-visible:ring-0 w-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <SelectTrigger className="h-auto border-0 bg-transparent shadow-none p-0 gap-1.5 focus-visible:ring-0 w-auto">
             <StatusBadge status={row.original.status} />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent position="popper">
             {ITEM_STATUSES.filter((s) => !['cancelled', 'claimed'].includes(s)).map((s) => (
               <SelectItem key={s} value={s}>
                 <StatusBadge status={s} />
