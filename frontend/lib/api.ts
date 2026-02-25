@@ -8,6 +8,7 @@ import type {
   AuditEntry,
   ClaimPayment,
   TransactionItem,
+  AppUser,
 } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -38,12 +39,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   transactions: {
-    list: (params?: { page?: number; limit?: number }) => {
-      const qs = new URLSearchParams();
-      if (params?.page) qs.set('page', String(params.page));
-      if (params?.limit) qs.set('limit', String(params.limit));
+    list: (params?: Record<string, string>) => {
+      const qs = new URLSearchParams(params);
       return apiFetch<Transaction[]>(`/transactions?${qs}`);
     },
+    recent: (limit = 10) => apiFetch<Transaction[]>(`/transactions/recent?limit=${limit}`),
+    upcoming: () => apiFetch<Transaction[]>('/transactions/upcoming'),
     get: (id: number) => apiFetch<Transaction>(`/transactions/${id}`),
     getByNumber: (number: string) => apiFetch<Transaction>(`/transactions/number/${number}`),
     create: (body: Partial<Omit<Transaction, 'items'>> & { items?: Record<string, unknown>[] }) =>
@@ -87,6 +88,8 @@ export const api = {
 
   expenses: {
     listByDate: (date: string) => apiFetch<Expense[]>(`/expenses?date=${date}`),
+    listByMonth: (year: number, month: number) =>
+      apiFetch<Expense[]>(`/expenses/monthly?year=${year}&month=${month}`),
     summary: (date: string) => apiFetch<ExpenseSummary>(`/expenses/summary?date=${date}`),
     create: (body: Partial<Expense>) =>
       apiFetch<Expense>('/expenses', { method: 'POST', body: JSON.stringify(body) }),
@@ -97,5 +100,9 @@ export const api = {
 
   audit: {
     list: () => apiFetch<AuditEntry[]>('/audit'),
+  },
+
+  users: {
+    me: () => apiFetch<AppUser>('/users/me'),
   },
 };
