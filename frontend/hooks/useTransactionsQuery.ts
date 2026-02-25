@@ -75,6 +75,20 @@ export function useTransactionDetailQuery(id: string) {
   });
 }
 
+export function useUpdateTransactionMutation(id: string) {
+  const numericId = parseInt(id, 10);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { newPickupDate?: string | null; note?: string | null }) =>
+      api.transactions.update(numericId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: transactionDetailKey(id) });
+      toast.success('Transaction updated');
+    },
+    onError: (err: Error) => toast.error('Failed to update transaction', { description: err.message }),
+  });
+}
+
 export function useUpdateTransactionStatusMutation(id: string) {
   const numericId = parseInt(id, 10);
   const qc = useQueryClient();
