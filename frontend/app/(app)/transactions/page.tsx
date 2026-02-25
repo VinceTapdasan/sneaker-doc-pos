@@ -57,7 +57,7 @@ export default function TransactionsPage() {
       />
 
       <div className="flex flex-wrap items-center gap-2 mb-5">
-        {['all', 'pending', 'in_progress', 'done', 'claimed'].map((s) => (
+        {['all', 'pending', 'in_progress', 'done', 'claimed', 'cancelled'].map((s) => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
