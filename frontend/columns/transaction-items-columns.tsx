@@ -68,6 +68,13 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, loa
     ),
   },
   {
+    id: 'service',
+    header: 'Service',
+    cell: ({ row }) => (
+      <span className="text-sm text-zinc-600">{row.original.service?.name ?? '—'}</span>
+    ),
+  },
+  {
     accessorKey: 'beforeImageUrl',
     header: 'Before',
     cell: ({ row }) => (
