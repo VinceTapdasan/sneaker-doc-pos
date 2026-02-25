@@ -88,7 +88,7 @@ export function NewTransactionForm() {
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
   const watchedItems = useWatch({ control, name: 'items' });
-  const watchedPromoId = useWatch({ control, name: 'promoId' }) ?? '';
+  const watchedPromoId = useWatch({ control, name: 'promoId' }) ?? 'none';
   const phoneValue = useWatch({ control, name: 'customerPhone' }) ?? '';
 
   const [debouncedPhone, setDebouncedPhone] = useState('');
@@ -118,7 +118,7 @@ export function NewTransactionForm() {
     return sum + (primarySvc ? parseFloat(primarySvc.price) : 0) + addonTotal;
   }, 0);
 
-  const selectedPromo = watchedPromoId
+  const selectedPromo = watchedPromoId && watchedPromoId !== 'none'
     ? validPromos.find((p) => String(p.id) === watchedPromoId) ?? null
     : null;
   const total = selectedPromo
@@ -149,7 +149,7 @@ export function NewTransactionForm() {
         customerEmail: data.customerEmail || undefined,
         pickupDate: data.pickupDate || undefined,
         note: data.note || undefined,
-        promoId: data.promoId ? parseInt(data.promoId, 10) : undefined,
+        promoId: data.promoId && data.promoId !== 'none' ? parseInt(data.promoId, 10) : undefined,
         total: total.toFixed(2),
         paid: '0',
         items: allItems,
@@ -392,14 +392,14 @@ export function NewTransactionForm() {
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-zinc-700">Promo Code</label>
                   <Select
-                    value={watchedPromoId}
-                    onValueChange={(v) => setValue('promoId', v)}
+                    value={watchedPromoId || 'none'}
+                    onValueChange={(v) => setValue('promoId', v === 'none' ? '' : v)}
                   >
                     <SelectTrigger className="h-9 text-sm w-full border-zinc-200 font-mono">
                       <SelectValue placeholder="None" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       {validPromos.map((p) => (
                         <SelectItem key={p.id} value={String(p.id)}>
                           <span className="font-mono">{p.code}</span>
