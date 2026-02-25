@@ -124,7 +124,9 @@ export const customers = pgTable('customers', {
   phone: varchar('phone', { length: 50 }).unique().notNull(),
   name: varchar('name', { length: 255 }),
   email: varchar('email', { length: 255 }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }),
 });
 
