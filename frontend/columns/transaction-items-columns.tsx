@@ -5,6 +5,7 @@ import { CameraIcon } from '@phosphor-icons/react';
 import { formatPeso } from '@/lib/utils';
 import { toTitleCase } from '@/utils/text';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { Spinner } from '@/components/ui/spinner';
 import {
   Select,
   SelectContent,
@@ -16,6 +17,7 @@ import type { TransactionItem, ItemStatus } from '@/lib/types';
 interface TransactionItemColumnsOptions {
   onStatusChange: (itemId: number, status: ItemStatus) => void;
   onImageClick?: (url: string, label: string) => void;
+  updatingItemId?: number | null;
 }
 
 const ITEM_STATUSES: ItemStatus[] = ['pending', 'in_progress', 'done', 'claimed', 'cancelled'];
@@ -39,7 +41,7 @@ function ImageCell({ url, label, onImageClick }: { url: string | null; label: st
   );
 }
 
-export const createTransactionItemColumns = ({ onStatusChange, onImageClick }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
+export const createTransactionItemColumns = ({ onStatusChange, onImageClick, updatingItemId }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
   {
     accessorKey: 'shoeDescription',
     header: 'Shoe',
@@ -65,10 +67,22 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick }: T
     accessorKey: 'status',
     header: 'Status',
     cell: ({ row }) => {
+      const isUpdating = updatingItemId === row.original.id;
       const locked = ['cancelled', 'claimed'].includes(row.original.status);
+
+      if (isUpdating) {
+        return (
+          <div className="flex items-center gap-1.5">
+            <Spinner size={12} className="text-zinc-400" />
+            <StatusBadge status={row.original.status} />
+          </div>
+        );
+      }
+
       if (locked) {
         return <StatusBadge status={row.original.status} />;
       }
+
       return (
         <Select
           value={row.original.status}
@@ -78,7 +92,7 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick }: T
             <StatusBadge status={row.original.status} />
           </SelectTrigger>
           <SelectContent position="popper">
-            {ITEM_STATUSES.filter((s) => !['cancelled', 'claimed'].includes(s)).map((s) => (
+            {ITEM_STATUSES.filter((s) => s !== 'cancelled').map((s) => (
               <SelectItem key={s} value={s}>
                 <StatusBadge status={s} />
               </SelectItem>
