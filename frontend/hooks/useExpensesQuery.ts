@@ -14,6 +14,7 @@ export function useExpensesQuery(date: string) {
   return useQuery({
     queryKey: expensesKey(date),
     queryFn: () => api.expenses.listByDate(date),
+    staleTime: 30 * 1000,
   });
 }
 
@@ -21,13 +22,16 @@ export function useExpensesSummaryQuery(date: string) {
   return useQuery({
     queryKey: expensesSummaryKey(date),
     queryFn: () => api.expenses.summary(date),
+    staleTime: 30 * 1000,
   });
 }
 
-export function useMonthlyExpensesQuery(year: number, month: number) {
+export function useMonthlyExpensesQuery(year: number, month: number, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['expenses-monthly', year, month],
     queryFn: () => api.expenses.listByMonth(year, month),
+    staleTime: 30 * 1000,
+    enabled: options?.enabled ?? true,
   });
 }
 
