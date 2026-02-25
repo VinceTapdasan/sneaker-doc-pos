@@ -2,10 +2,9 @@
 
 import { type ColumnDef } from '@tanstack/react-table';
 import { CameraIcon } from '@phosphor-icons/react';
-import { formatPeso } from '@/lib/utils';
+import { formatPeso, STATUS_COLORS, cn } from '@/lib/utils';
 import { toTitleCase } from '@/utils/text';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { Spinner } from '@/components/ui/spinner';
 import {
   Select,
   SelectContent,
@@ -13,6 +12,25 @@ import {
   SelectTrigger,
 } from '@/components/ui/select';
 import type { TransactionItem, ItemStatus } from '@/lib/types';
+
+function StatusLoadingPill({ status }: { status: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full text-xs font-medium',
+        STATUS_COLORS[status] ?? 'text-zinc-600 bg-zinc-100',
+      )}
+    >
+      {[0, 150, 300].map((delay) => (
+        <span
+          key={delay}
+          className="w-1 h-1 rounded-full bg-current animate-bounce"
+          style={{ animationDelay: `${delay}ms` }}
+        />
+      ))}
+    </span>
+  );
+}
 
 interface TransactionItemColumnsOptions {
   onStatusChange: (itemId: number, status: ItemStatus) => void;
@@ -71,12 +89,7 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, upd
       const locked = ['cancelled', 'claimed'].includes(row.original.status);
 
       if (isUpdating) {
-        return (
-          <div className="flex items-center gap-1.5">
-            <Spinner size={12} className="text-zinc-400" />
-            <StatusBadge status={row.original.status} />
-          </div>
-        );
+        return <StatusLoadingPill status={row.original.status} />;
       }
 
       if (locked) {
