@@ -31,6 +31,15 @@ export class ExpensesController {
   }
 
   @UseGuards(SupabaseAuthGuard)
+  @Get('monthly')
+  findByMonth(@Query('year') year: string, @Query('month') month: string) {
+    return this.expensesService.findByMonth(
+      parseInt(year, 10),
+      parseInt(month, 10),
+    );
+  }
+
+  @UseGuards(SupabaseAuthGuard)
   @Post()
   create(@Body() dto: CreateExpenseDto, @Req() req: any) {
     return this.expensesService.create(dto, 'pos', req.user?.id);
