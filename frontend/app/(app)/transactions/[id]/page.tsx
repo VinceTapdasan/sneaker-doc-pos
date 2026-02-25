@@ -263,16 +263,14 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               </div>
               <div className="flex justify-between text-sm border-t border-zinc-100 pt-2.5">
                 <span className="font-medium text-zinc-950">Balance</span>
-                <span
-                  className={`font-mono font-semibold ${
-                    balance <= 0
-                      ? 'text-emerald-600'
-                      : parseFloat(txn.paid) > 0
-                        ? 'text-amber-600'
-                        : 'text-red-500'
-                  }`}
-                >
-                  {balance <= 0 ? 'Fully paid' : formatPeso(balance)}
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium font-mono ${
+                  balance <= 0
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : parseFloat(txn.paid) > 0
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-red-100 text-red-600'
+                }`}>
+                  {balance <= 0 ? 'Fully paid' : parseFloat(txn.paid) > 0 ? `Partial · ${formatPeso(balance)}` : formatPeso(balance)}
                 </span>
               </div>
             </div>
