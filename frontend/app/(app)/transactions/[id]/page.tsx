@@ -145,9 +145,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
         }
       />
 
-      <div className="flex items-center gap-2 -mt-4 mb-6">
-        <span className="text-xs text-zinc-400">Status</span>
-        <StatusBadge status={txn.status} />
+      <div className="flex items-center gap-2 -mt-4 mb-6 pl-2">
+        <StatusBadge status={txn.status} className="px-3.5 py-1 text-sm" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
