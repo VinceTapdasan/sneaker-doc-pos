@@ -151,7 +151,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             </p>
             <DataTable
               columns={itemColumns}
-              data={txn.items ?? []}
+              data={[...(txn.items ?? [])].sort((a, b) => a.id - b.id)}
               isLoading={isFetching && !txn.items}
               loadingRows={3}
               emptyTitle="No items"
