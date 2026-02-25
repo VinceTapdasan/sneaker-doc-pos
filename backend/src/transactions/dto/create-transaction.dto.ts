@@ -12,6 +12,7 @@ export class CreateTransactionDto {
   customerPhone?: string;
   customerEmail?: string;
   status?: string;
+  note?: string;
   pickupDate?: string; // ISO date YYYY-MM-DD
   total?: string;
   paid?: string;
