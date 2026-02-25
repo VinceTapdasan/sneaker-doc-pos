@@ -1,13 +1,17 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useMemo, useState } from 'react';
 import { ArrowLeftIcon, PlusIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { formatPeso, formatDate, formatDatetime, PAYMENT_METHOD_LABELS, STATUS_LABELS } from '@/lib/utils';
+import { toTitleCase } from '@/utils/text';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Select } from '@/components/ui/input';
+import { DataTable } from '@/components/ui/data-table';
+import { Spinner } from '@/components/ui/spinner';
+import { createTransactionItemColumns } from '@/columns/transaction-items-columns';
 import {
   useTransactionDetailQuery,
   useUpdateTransactionStatusMutation,
@@ -17,7 +21,6 @@ import {
 import type { TransactionStatus, PaymentMethod } from '@/lib/types';
 
 const STATUSES: TransactionStatus[] = ['pending', 'in_progress', 'done', 'claimed'];
-const ITEM_STATUSES = ['pending', 'in_progress', 'done'];
 const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'gcash', 'card', 'bank_deposit'];
 
 export default function TransactionDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -29,6 +32,13 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const { data: txn, isLoading } = useTransactionDetailQuery(id);
   const updateStatusMut = useUpdateTransactionStatusMutation(id);
   const updateItemStatusMut = useUpdateItemStatusMutation(id);
+
+  const itemColumns = useMemo(
+    () => createTransactionItemColumns({
+      onStatusChange: (itemId, status) => updateItemStatusMut.mutate({ itemId, status }),
+    }),
+    [],
+  );
   const addPaymentMut = useAddPaymentMutation(id, () => {
     setShowPaymentForm(false);
     setPaymentAmount('');
@@ -86,7 +96,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <p className="text-xs text-zinc-400">Name</p>
-                <p className="text-sm font-medium text-zinc-950">{txn.customerName ?? '—'}</p>
+                <p className="text-sm font-medium text-zinc-950">{toTitleCase(txn.customerName) || '—'}</p>
               </div>
               <div>
                 <p className="text-xs text-zinc-400">Phone</p>
@@ -100,61 +110,15 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
           </div>
 
           {/* Items */}
-          <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
-            <div className="px-5 py-4 border-b border-zinc-100">
-              <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                Shoes & Services ({txn.items?.length ?? 0} items)
-              </h2>
-            </div>
-            {txn.items && txn.items.length > 0 ? (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-100">
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-zinc-400">
-                      Shoe
-                    </th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-zinc-400">
-                      Status
-                    </th>
-                    <th className="px-4 py-2.5 text-right text-xs font-medium text-zinc-400">
-                      Price
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {txn.items.map((item) => (
-                    <tr key={item.id}>
-                      <td className="px-4 py-3 text-zinc-950">
-                        {item.shoeDescription ?? '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={item.status}
-                          onChange={(e) =>
-                            updateItemStatusMut.mutate({
-                              itemId: item.id,
-                              status: e.target.value as 'pending' | 'in_progress' | 'done',
-                            })
-                          }
-                          className="text-xs bg-transparent border-0 text-zinc-700 focus:outline-none cursor-pointer"
-                        >
-                          {ITEM_STATUSES.map((s) => (
-                            <option key={s} value={s}>
-                              {STATUS_LABELS[s]}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-zinc-700">
-                        {item.price ? formatPeso(item.price) : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <p className="px-5 py-6 text-sm text-zinc-400">No items.</p>
-            )}
+          <div>
+            <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2">
+              Shoes & Services ({txn.items?.length ?? 0} items)
+            </p>
+            <DataTable
+              columns={itemColumns}
+              data={txn.items ?? []}
+              emptyTitle="No items"
+            />
           </div>
         </div>
 
@@ -225,7 +189,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                   disabled={!paymentAmount || addPaymentMut.isPending}
                   onClick={() => addPaymentMut.mutate({ method: paymentMethod, amount: paymentAmount })}
                 >
-                  {addPaymentMut.isPending ? 'Recording...' : 'Record Payment'}
+                  {addPaymentMut.isPending ? <Spinner /> : 'Record Payment'}
                 </Button>
               </div>
             )}

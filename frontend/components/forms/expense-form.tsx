@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 
 const schema = z.object({
   category: z.string().optional(),
@@ -96,7 +97,7 @@ export function ExpenseForm({ dateKey, onSuccess, onCancel }: ExpenseFormProps) 
 
       <div className="flex gap-2 mt-4">
         <Button type="submit" size="sm" disabled={createMut.isPending}>
-          {createMut.isPending ? 'Saving...' : 'Save Expense'}
+          {createMut.isPending ? <Spinner /> : 'Save Expense'}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
           Cancel

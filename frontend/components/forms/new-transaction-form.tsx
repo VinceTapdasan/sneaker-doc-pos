@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -292,7 +293,7 @@ export function NewTransactionForm() {
                 className="w-full mt-4"
                 disabled={createMut.isPending}
               >
-                {createMut.isPending ? 'Creating...' : 'Create Transaction'}
+                {createMut.isPending ? <Spinner /> : 'Create Transaction'}
               </Button>
             </div>
           </div>

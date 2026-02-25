@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { PlusIcon, TrashIcon, PencilSimpleIcon, CheckIcon, XIcon } from '@phosphor-icons/react';
-import { formatPeso } from '@/lib/utils';
+import { PlusIcon } from '@phosphor-icons/react';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { DataTable } from '@/components/ui/data-table';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ServiceForm } from '@/components/forms/service-form';
+import { createServicesColumns } from '@/columns/services-columns';
 import {
   useServicesQuery,
   useUpdateServiceMutation,
@@ -29,6 +31,7 @@ export default function ServicesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<EditForm>(EMPTY_EDIT);
+  const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
 
   useEffect(() => {
     if (searchParams.get('new') === '1') setShowForm(true);
@@ -40,7 +43,6 @@ export default function ServicesPage() {
     setEditId(null);
     setForm(EMPTY_EDIT);
   });
-
   const deleteMut = useDeleteServiceMutation();
   const toggleActive = useToggleServiceMutation();
 
@@ -58,105 +60,31 @@ export default function ServicesPage() {
   const primaryServices = (services as Service[]).filter((s) => s.type === 'primary');
   const addonServices = (services as Service[]).filter((s) => s.type === 'add_on');
 
+  const columns = useMemo(
+    () => createServicesColumns({
+      editId,
+      form,
+      setForm,
+      onUpdate: () => updateMut.mutate({ id: editId!, form }),
+      onCancelEdit: cancelEdit,
+      onStartEdit: startEdit,
+      onToggle: (id, isActive) => toggleActive.mutate({ id, isActive }),
+      onDelete: setDeleteTarget,
+    }),
+    [editId, form],
+  );
+
   const renderSection = (title: string, list: Service[]) => (
-    <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden mb-5">
-      <div className="px-5 py-3.5 border-b border-zinc-100 bg-zinc-50">
+    <div className="mb-5">
+      <div className="px-0 py-2 mb-1">
         <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{title}</h2>
       </div>
       {list.length === 0 ? (
-        <p className="px-5 py-5 text-sm text-zinc-400">None yet.</p>
+        <div className="bg-white border border-zinc-200 rounded-lg">
+          <p className="px-5 py-5 text-sm text-zinc-400">None yet.</p>
+        </div>
       ) : (
-        <table className="w-full text-sm">
-          <tbody className="divide-y divide-zinc-100">
-            {list.map((s) =>
-              editId === s.id ? (
-                <tr key={s.id} className="bg-blue-50/40">
-                  <td className="px-4 py-2.5 w-1/2">
-                    <input
-                      value={form.name}
-                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                      className="w-full px-2 py-1 text-sm border border-zinc-200 rounded focus:outline-none focus:border-blue-500"
-                    />
-                  </td>
-                  <td className="px-4 py-2.5 w-32">
-                    <select
-                      value={form.type}
-                      onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as 'primary' | 'add_on' }))}
-                      className="text-sm border border-zinc-200 rounded px-2 py-1 focus:outline-none"
-                    >
-                      <option value="primary">Primary</option>
-                      <option value="add_on">Add-on</option>
-                    </select>
-                  </td>
-                  <td className="px-4 py-2.5 w-28">
-                    <input
-                      type="number"
-                      value={form.price}
-                      onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                      className="w-full px-2 py-1 text-sm border border-zinc-200 rounded font-mono focus:outline-none focus:border-blue-500"
-                    />
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => updateMut.mutate({ id: editId!, form })}
-                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-                      >
-                        <CheckIcon size={14} weight="bold" />
-                      </button>
-                      <button
-                        onClick={cancelEdit}
-                        className="p-1.5 text-zinc-400 hover:bg-zinc-100 rounded transition-colors"
-                      >
-                        <XIcon size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                <tr key={s.id} className="hover:bg-zinc-50 group transition-colors">
-                  <td className="px-4 py-3">
-                    <span className={`font-medium ${s.isActive ? 'text-zinc-950' : 'text-zinc-400 line-through'}`}>
-                      {s.name}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-xs text-zinc-400">
-                      {s.type === 'primary' ? 'Primary' : 'Add-on'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-zinc-700">
-                    {formatPeso(s.price)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => toggleActive.mutate({ id: s.id, isActive: !s.isActive })}
-                        className="px-2 py-1 text-xs text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded transition-colors"
-                      >
-                        {s.isActive ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <button
-                        onClick={() => startEdit(s)}
-                        className="p-1.5 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded transition-colors"
-                      >
-                        <PencilSimpleIcon size={13} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Delete "${s.name}"?`)) deleteMut.mutate(s.id);
-                        }}
-                        className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                      >
-                        <TrashIcon size={13} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ),
-            )}
-          </tbody>
-        </table>
+        <DataTable columns={columns} data={list} />
       )}
     </div>
   );
@@ -195,6 +123,15 @@ export default function ServicesPage() {
           {renderSection('Add-ons', addonServices)}
         </>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete service?"
+        description={`Delete "${deleteTarget?.name}"? This cannot be undone.`}
+        onConfirm={() => { if (deleteTarget) deleteMut.mutate(deleteTarget.id); setDeleteTarget(null); }}
+        onCancel={() => setDeleteTarget(null)}
+        loading={deleteMut.isPending}
+      />
     </div>
   );
 }

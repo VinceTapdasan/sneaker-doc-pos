@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
 
 const schema = z.object({
@@ -129,7 +130,7 @@ export function PromoForm({ onSuccess, onCancel }: PromoFormProps) {
 
       <div className="flex gap-2 mt-4">
         <Button type="submit" size="sm" disabled={createMut.isPending}>
-          {createMut.isPending ? 'Saving...' : 'Save Promo'}
+          {createMut.isPending ? <Spinner /> : 'Save Promo'}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
           Cancel
