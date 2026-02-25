@@ -153,7 +153,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
               Customer
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className={cn('grid grid-cols-1 gap-4', txn.newPickupDate ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
               <div>
                 <p className="text-xs text-zinc-400">Name</p>
                 <p className="text-sm font-medium text-zinc-950">{toTitleCase(txn.customerName) || '—'}</p>
