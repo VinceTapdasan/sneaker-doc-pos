@@ -1,13 +1,12 @@
+import { ItemStatus, PaymentMethod, ServiceType, TransactionStatus } from './constants';
+
 export interface User {
   id: string;
   email?: string;
   phone?: string;
 }
 
-export type TransactionStatus = 'pending' | 'in_progress' | 'done' | 'claimed';
-export type ItemStatus = 'pending' | 'in_progress' | 'done';
-export type PaymentMethod = 'cash' | 'gcash' | 'card' | 'bank_deposit';
-export type ServiceType = 'primary' | 'add_on';
+export type { TransactionStatus, ItemStatus, PaymentMethod, ServiceType } from './constants';
 
 export interface Service {
   id: number;
@@ -57,11 +56,13 @@ export interface Transaction {
   customerPhone: string | null;
   customerEmail: string | null;
   status: TransactionStatus;
+  note: string | null;
   pickupDate: string | null;
   total: string;
   paid: string;
   promoId: number | null;
   createdAt: string;
+  claimedAt: string | null;
   updatedAt: string | null;
   items?: TransactionItem[];
   payments?: ClaimPayment[];
@@ -96,4 +97,11 @@ export interface PaginatedResponse<T> {
   data: T[];
   page: number;
   limit: number;
+}
+
+export interface AppUser {
+  id: string;
+  email: string;
+  userType: 'admin' | 'staff' | 'superadmin';
+  createdAt: string;
 }
