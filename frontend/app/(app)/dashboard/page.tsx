@@ -14,31 +14,26 @@ import {
   useTransactionReportQuery,
   useRecentTransactionsQuery,
   useUpcomingPickupsQuery,
+  useDailyStatsQuery,
 } from '@/hooks/useTransactionsQuery';
 import { useMonthlyExpensesQuery } from '@/hooks/useExpensesQuery';
+import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { PageHeader } from '@/components/ui/page-header';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { toTitleCase } from '@/utils/text';
 import type { Transaction, ClaimPayment } from '@/lib/types';
 
-const QUICK_ACTIONS = [
-  { label: 'New Transaction', href: '/transactions/new', icon: ReceiptIcon },
-  { label: 'New Service', href: '/services?new=1', icon: WrenchIcon },
-  { label: 'New Expense', href: '/expenses?new=1', icon: CurrencyDollarIcon },
-  { label: 'New Promo', href: '/promos?new=1', icon: TagIcon },
+const ALL_QUICK_ACTIONS = [
+  { label: 'New Transaction', href: '/transactions/new', icon: ReceiptIcon, adminOnly: false },
+  { label: 'New Service', href: '/services?new=1', icon: WrenchIcon, adminOnly: true },
+  { label: 'New Expense', href: '/expenses?new=1', icon: CurrencyDollarIcon, adminOnly: true },
+  { label: 'New Promo', href: '/promos?new=1', icon: TagIcon, adminOnly: true },
 ];
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
-
-function getMonthRange(year: number, month: number) {
-  const from = `${year}-${String(month).padStart(2, '0')}-01`;
-  const lastDay = new Date(year, month, 0).getDate();
-  const to = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
-  return { from, to };
-}
 
 function pickupDateClass(dateStr: string | null) {
   if (!dateStr) return 'text-zinc-400';
@@ -53,30 +48,35 @@ export default function DashboardPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
 
-  const { data: transactions = [] } = useTransactionReportQuery(year, month);
-  const { data: recentTxns = [] } = useRecentTransactionsQuery(10);
-  const { data: upcomingPickups = [] } = useUpcomingPickupsQuery();
-  const { data: expenses = [] } = useMonthlyExpensesQuery(year, month);
+  const { data: currentUser } = useCurrentUserQuery();
+  const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
 
-  const { from, to } = getMonthRange(year, month);
+  const { data: reportTxns = [] } = useTransactionReportQuery(year, month, { enabled: isAdmin });
+  const { data: dailyTxns = [] } = useDailyStatsQuery();
+  const { data: recentTxns = [] } = useRecentTransactionsQuery(20);
+  const { data: upcomingPickups = [] } = useUpcomingPickupsQuery();
+  const { data: expenses = [] } = useMonthlyExpensesQuery(year, month, { enabled: isAdmin });
+
+  const quickActions = ALL_QUICK_ACTIONS.filter((a) => !a.adminOnly || isAdmin);
+
+  const from = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const to = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
 
   const filtered = useMemo(() => {
-    return (transactions as Transaction[]).filter((t) => {
+    return (reportTxns as Transaction[]).filter((t) => {
       const d = t.createdAt.split('T')[0];
       return d >= from && d <= to;
     });
-  }, [transactions, from, to]);
+  }, [reportTxns, from, to]);
 
-  const stats = useMemo(() => {
+  const monthlyStats = useMemo(() => {
     const totalRevenue = filtered.reduce((sum, t) => sum + parseFloat(t.total), 0);
     const totalPaid = filtered.reduce((sum, t) => sum + parseFloat(t.paid), 0);
-    const totalBalance = totalRevenue - totalPaid;
-
     const byStatus = filtered.reduce(
       (acc, t) => { acc[t.status] = (acc[t.status] ?? 0) + 1; return acc; },
       {} as Record<string, number>,
     );
-
     const byPaymentMethod = filtered.reduce(
       (acc, t) => {
         (t.payments ?? []).forEach((p: ClaimPayment) => {
@@ -86,44 +86,52 @@ export default function DashboardPage() {
       },
       {} as Record<string, number>,
     );
-
-    return { totalRevenue, totalPaid, totalBalance, byStatus, byPaymentMethod };
+    return { totalRevenue, totalPaid, totalBalance: totalRevenue - totalPaid, byStatus, byPaymentMethod };
   }, [filtered]);
 
-  const totalExpenses = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+  const dailyStats = useMemo(() => {
+    const txns = dailyTxns as Transaction[];
+    const totalRevenue = txns.reduce((sum, t) => sum + parseFloat(t.total), 0);
+    const totalPaid = txns.reduce((sum, t) => sum + parseFloat(t.paid), 0);
+    return { count: txns.length, totalRevenue, totalPaid, totalBalance: totalRevenue - totalPaid };
+  }, [dailyTxns]);
+
+  const totalExpenses = (expenses ?? []).reduce((sum, e) => sum + parseFloat(e.amount), 0);
 
   return (
     <div>
       <PageHeader
         title="Dashboard"
-        subtitle="Monthly financial summary"
+        subtitle={isAdmin ? 'Monthly financial summary' : "Today's overview"}
         action={
-          <div className="flex items-center gap-2">
-            <select
-              value={month}
-              onChange={(e) => setMonth(parseInt(e.target.value, 10))}
-              className="px-3 py-1.5 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none"
-            >
-              {MONTHS.map((m, i) => (
-                <option key={i} value={i + 1}>{m}</option>
-              ))}
-            </select>
-            <select
-              value={year}
-              onChange={(e) => setYear(parseInt(e.target.value, 10))}
-              className="px-3 py-1.5 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none"
-            >
-              {[2024, 2025, 2026].map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          </div>
+          isAdmin ? (
+            <div className="flex items-center gap-2">
+              <select
+                value={month}
+                onChange={(e) => setMonth(parseInt(e.target.value, 10))}
+                className="px-3 py-1.5 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none"
+              >
+                {MONTHS.map((m, i) => (
+                  <option key={i} value={i + 1}>{m}</option>
+                ))}
+              </select>
+              <select
+                value={year}
+                onChange={(e) => setYear(parseInt(e.target.value, 10))}
+                className="px-3 py-1.5 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none"
+              >
+                {[2024, 2025, 2026].map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+          ) : null
         }
       />
 
       {/* Quick actions */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        {QUICK_ACTIONS.map(({ label, href, icon: Icon }) => (
+        {quickActions.map(({ label, href, icon: Icon }) => (
           <Link
             key={href}
             href={href}
@@ -135,77 +143,91 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-        {[
-          { label: 'Transactions', value: filtered.length, mono: false },
-          { label: 'Total Revenue', value: formatPeso(stats.totalRevenue), mono: true },
-          { label: 'Total Collected', value: formatPeso(stats.totalPaid), mono: true },
-          { label: 'Outstanding', value: formatPeso(stats.totalBalance), mono: true },
-        ].map(({ label, value, mono }) => (
-          <div key={label} className="bg-white border border-zinc-200 rounded-lg p-5">
-            <p className="text-xs text-zinc-400 mb-1">{label}</p>
-            <p className={`text-2xl font-semibold text-zinc-950 ${mono ? 'font-mono' : ''}`}>
-              {value}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-4 md:mb-6">
-        {/* Transactions by Status */}
-        <div className="bg-white border border-zinc-200 rounded-lg p-5">
-          <h2 className="text-sm font-semibold text-zinc-950 mb-4">Transactions by Status</h2>
-          <div className="space-y-2">
-            {Object.entries(stats.byStatus).map(([status, count]) => (
-              <div key={status} className="flex items-center justify-between py-1">
-                <span className="text-sm text-zinc-600 capitalize">{STATUS_LABELS[status] ?? status.replace('_', ' ')}</span>
-                <span className="font-mono text-sm font-medium text-zinc-950">{count}</span>
+      {/* Admin: monthly stats */}
+      {isAdmin && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+            {[
+              { label: 'Transactions', value: filtered.length, mono: false },
+              { label: 'Total Revenue', value: formatPeso(monthlyStats.totalRevenue), mono: true },
+              { label: 'Total Collected', value: formatPeso(monthlyStats.totalPaid), mono: true },
+              { label: 'Outstanding', value: formatPeso(monthlyStats.totalBalance), mono: true },
+            ].map(({ label, value, mono }) => (
+              <div key={label} className="bg-white border border-zinc-200 rounded-lg p-5">
+                <p className="text-xs text-zinc-400 mb-1">{label}</p>
+                <p className={`text-2xl font-semibold text-zinc-950 ${mono ? 'font-mono' : ''}`}>
+                  {value}
+                </p>
               </div>
             ))}
-            {Object.keys(stats.byStatus).length === 0 && (
-              <p className="text-sm text-zinc-400">No data for this period.</p>
-            )}
           </div>
-        </div>
 
-        {/* Collected by Payment Method + Expenses */}
-        <div className="space-y-4">
-          <div className="bg-white border border-zinc-200 rounded-lg p-5">
-            <h2 className="text-sm font-semibold text-zinc-950 mb-4">Collected by Payment Method</h2>
-            <div className="space-y-2">
-              {Object.entries(stats.byPaymentMethod).map(([method, amount]) => (
-                <div key={method} className="flex items-center justify-between py-1">
-                  <span className="text-sm text-zinc-600">
-                    {PAYMENT_METHOD_LABELS[method] ?? method}
-                  </span>
-                  <span className="font-mono text-sm font-medium text-zinc-950">
-                    {formatPeso(amount)}
-                  </span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-4 md:mb-6">
+            <div className="bg-white border border-zinc-200 rounded-lg p-5">
+              <h2 className="text-sm font-semibold text-zinc-950 mb-4">Transactions by Status</h2>
+              <div className="space-y-2">
+                {Object.entries(monthlyStats.byStatus).map(([status, count]) => (
+                  <div key={status} className="flex items-center justify-between py-1">
+                    <span className="text-sm text-zinc-600">{STATUS_LABELS[status] ?? status.replace('_', ' ')}</span>
+                    <span className="font-mono text-sm font-medium text-zinc-950">{count}</span>
+                  </div>
+                ))}
+                {Object.keys(monthlyStats.byStatus).length === 0 && (
+                  <p className="text-sm text-zinc-400">No data for this period.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-white border border-zinc-200 rounded-lg p-5">
+                <h2 className="text-sm font-semibold text-zinc-950 mb-4">Collected by Payment Method</h2>
+                <div className="space-y-2">
+                  {Object.entries(monthlyStats.byPaymentMethod).map(([method, amount]) => (
+                    <div key={method} className="flex items-center justify-between py-1">
+                      <span className="text-sm text-zinc-600">{PAYMENT_METHOD_LABELS[method] ?? method}</span>
+                      <span className="font-mono text-sm font-medium text-zinc-950">{formatPeso(amount)}</span>
+                    </div>
+                  ))}
+                  {Object.keys(monthlyStats.byPaymentMethod).length === 0 && (
+                    <p className="text-sm text-zinc-400">No payments recorded for this period.</p>
+                  )}
                 </div>
-              ))}
-              {Object.keys(stats.byPaymentMethod).length === 0 && (
-                <p className="text-sm text-zinc-400">No payments recorded for this period.</p>
-              )}
+              </div>
+
+              <div className="bg-white border border-zinc-200 rounded-lg p-5">
+                <h2 className="text-sm font-semibold text-zinc-950 mb-1">Expenses</h2>
+                <p className="text-xs text-zinc-400 mb-2">Month total</p>
+                <p className="text-2xl font-mono font-semibold text-zinc-950">{formatPeso(totalExpenses)}</p>
+                {expenses.length > 0 && (
+                  <p className="text-xs text-zinc-400 mt-1">{expenses.length} entries</p>
+                )}
+              </div>
             </div>
           </div>
+        </>
+      )}
 
-          <div className="bg-white border border-zinc-200 rounded-lg p-5">
-            <h2 className="text-sm font-semibold text-zinc-950 mb-1">Expenses</h2>
-            <p className="text-xs text-zinc-400 mb-2">Month total</p>
-            <p className="text-2xl font-mono font-semibold text-zinc-950">
-              {formatPeso(totalExpenses)}
-            </p>
-            {expenses.length > 0 && (
-              <p className="text-xs text-zinc-400 mt-1">{expenses.length} entries</p>
-            )}
-          </div>
+      {/* Staff: daily stats */}
+      {!isAdmin && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+          {[
+            { label: 'Transactions Today', value: dailyStats.count, mono: false },
+            { label: "Today's Revenue", value: formatPeso(dailyStats.totalRevenue), mono: true },
+            { label: 'Collected Today', value: formatPeso(dailyStats.totalPaid), mono: true },
+            { label: 'Outstanding', value: formatPeso(dailyStats.totalBalance), mono: true },
+          ].map(({ label, value, mono }) => (
+            <div key={label} className="bg-white border border-zinc-200 rounded-lg p-5">
+              <p className="text-xs text-zinc-400 mb-1">{label}</p>
+              <p className={`text-2xl font-semibold text-zinc-950 ${mono ? 'font-mono' : ''}`}>
+                {value}
+              </p>
+            </div>
+          ))}
         </div>
-      </div>
+      )}
 
       {/* Upcoming pickups + Recent transactions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-        {/* Upcoming pickups */}
         <div className="bg-white border border-zinc-200 rounded-lg p-5">
           <h2 className="text-sm font-semibold text-zinc-950 mb-4 flex items-center gap-1.5">
             <CalendarIcon size={14} className="text-amber-500" />
@@ -229,12 +251,8 @@ export default function DashboardPage() {
                     <p className="text-xs text-zinc-500 truncate">{toTitleCase(t.customerName) || '—'}</p>
                   </div>
                   <div className="text-right ml-3 shrink-0">
-                    <p className={`text-xs ${pickupDateClass(t.pickupDate)}`}>
-                      {formatDate(t.pickupDate)}
-                    </p>
-                    <div className="mt-0.5">
-                      <StatusBadge status={t.status} />
-                    </div>
+                    <p className={`text-xs ${pickupDateClass(t.pickupDate)}`}>{formatDate(t.pickupDate)}</p>
+                    <div className="mt-0.5"><StatusBadge status={t.status} /></div>
                   </div>
                 </Link>
               ))}
@@ -242,7 +260,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Recent transactions */}
         <div className="bg-white border border-zinc-200 rounded-lg p-5">
           <h2 className="text-sm font-semibold text-zinc-950 mb-4">Recent Transactions</h2>
           {recentTxns.length === 0 ? (
@@ -261,9 +278,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-right ml-3 shrink-0">
                     <p className="font-mono text-xs text-zinc-950">{formatPeso(t.total)}</p>
-                    <div className="mt-0.5">
-                      <StatusBadge status={t.status} />
-                    </div>
+                    <div className="mt-0.5"><StatusBadge status={t.status} /></div>
                   </div>
                 </Link>
               ))}
