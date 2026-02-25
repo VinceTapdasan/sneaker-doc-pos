@@ -26,7 +26,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import type { Service } from '@/lib/types';
 
 const itemSchema = z.object({
-  shoeDescription: z.string().optional(),
+  shoeDescription: z.string().min(1, 'Shoe description is required'),
   serviceId: z.string().min(1, 'Select a service'),
 });
 
@@ -35,6 +35,7 @@ const schema = z.object({
   customerPhone: z.string().optional(),
   customerEmail: z.string().email('Invalid email').optional().or(z.literal('')),
   pickupDate: z.string().optional(),
+  note: z.string().optional(),
   items: z.array(itemSchema).min(1, 'Add at least one item'),
 });
 
@@ -64,6 +65,7 @@ export function NewTransactionForm() {
       customerPhone: '',
       customerEmail: '',
       pickupDate: '',
+      note: '',
       items: [{ shoeDescription: '', serviceId: '' }],
     },
   });
@@ -85,6 +87,7 @@ export function NewTransactionForm() {
         customerPhone: data.customerPhone || undefined,
         customerEmail: data.customerEmail || undefined,
         pickupDate: data.pickupDate || undefined,
+        note: data.note || undefined,
         total: String(total),
         paid: '0',
         items: data.items.map((i) => {
@@ -189,7 +192,9 @@ export function NewTransactionForm() {
                         placeholder="e.g. Nike Air Max 1, White/Black"
                         {...register(`items.${idx}.shoeDescription`)}
                       />
-                      <p className="h-4 text-xs" />
+                      <p className="h-4 text-xs text-red-500">
+                        {errors.items?.[idx]?.shoeDescription?.message ?? ''}
+                      </p>
                     </div>
 
                     <div className="flex flex-col gap-1.5">
@@ -266,6 +271,15 @@ export function NewTransactionForm() {
                     placeholder="SAVE20"
                     className="font-mono uppercase"
                     name="promoCode"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-zinc-700">Note</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Internal note..."
+                    {...register('note')}
+                    className="px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md text-zinc-950 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none transition-colors"
                   />
                 </div>
               </div>
