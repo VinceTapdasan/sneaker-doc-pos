@@ -24,6 +24,13 @@ export function useExpensesSummaryQuery(date: string) {
   });
 }
 
+export function useMonthlyExpensesQuery(year: number, month: number) {
+  return useQuery({
+    queryKey: ['expenses-monthly', year, month],
+    queryFn: () => api.expenses.listByMonth(year, month),
+  });
+}
+
 export function useDeleteExpenseMutation(date: string) {
   const qc = useQueryClient();
   return useMutation({
