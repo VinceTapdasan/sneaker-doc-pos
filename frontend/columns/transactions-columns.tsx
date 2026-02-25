@@ -2,7 +2,7 @@
 
 import { type ColumnDef } from '@tanstack/react-table';
 import Link from 'next/link';
-import { TrashIcon } from '@phosphor-icons/react';
+import { TrashIcon, DiamondIcon } from '@phosphor-icons/react';
 import { formatPeso, formatDate, formatDatetime } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { toTitleCase } from '@/utils/text';
@@ -56,9 +56,14 @@ export const createTransactionColumns = ({ onDelete }: TransactionColumnsOptions
     accessorKey: 'total',
     header: () => <span className="block text-right">Total</span>,
     cell: ({ row }) => (
-      <span className="block text-right font-mono text-sm text-zinc-950">
-        {formatPeso(row.original.total)}
-      </span>
+      <div className="flex items-center justify-end gap-1">
+        <span className="font-mono text-sm text-zinc-950">
+          {formatPeso(row.original.total)}
+        </span>
+        {row.original.promoId && (
+          <DiamondIcon size={11} weight="fill" className="text-emerald-500 shrink-0" />
+        )}
+      </div>
     ),
   },
   {
