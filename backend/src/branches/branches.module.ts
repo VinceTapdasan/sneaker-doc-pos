@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
-import { TransactionsController } from './transactions.controller';
-import { TransactionsService } from './transactions.service';
+import { BranchesController } from './branches.controller';
+import { BranchesService } from './branches.service';
 import { DbModule } from '../db/db.module';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [DbModule, AuthModule, UsersModule],
-  controllers: [TransactionsController],
-  providers: [TransactionsService],
+  controllers: [BranchesController],
+  providers: [BranchesService],
+  exports: [BranchesService],
 })
-export class TransactionsModule {}
+export class BranchesModule {}

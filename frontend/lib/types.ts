@@ -1,5 +1,12 @@
 import { ItemStatus, PaymentMethod, ServiceType, TransactionStatus } from './constants';
 
+export interface Branch {
+  id: number;
+  name: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
 export interface User {
   id: string;
   email?: string;
@@ -73,6 +80,7 @@ export interface Transaction {
   total: string;
   paid: string;
   promoId: number | null;
+  branchId: number | null;
   createdAt: string;
   claimedAt: string | null;
   updatedAt: string | null;
@@ -99,10 +107,12 @@ export interface AuditEntry {
   id: number;
   createdAt: string;
   action: string;
+  auditType: string | null;
   entityType: string;
   entityId: string | null;
   source: string | null;
   performedBy: string | null;
+  branchId: number | null;
   details: Record<string, unknown> | null;
 }
 
@@ -116,5 +126,16 @@ export interface AppUser {
   id: string;
   email: string;
   userType: 'admin' | 'staff' | 'superadmin';
+  branchId: number | null;
   createdAt: string;
+}
+
+export interface TodayCollection {
+  id: number;
+  transactionId: number;
+  method: string;
+  amount: string;
+  paidAt: string;
+  txnNumber: string;
+  customerName: string | null;
 }

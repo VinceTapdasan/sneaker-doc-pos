@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftIcon, PlusIcon, EnvelopeIcon, DiamondIcon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, PlusIcon, EnvelopeIcon } from '@phosphor-icons/react';
 import { Lightbox } from '@/components/ui/lightbox';
 import Link from 'next/link';
 import { formatPeso, formatDate, formatDatetime, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
@@ -28,15 +28,14 @@ import {
 import { createTransactionItemColumns } from '@/columns/transaction-items-columns';
 import {
   useTransactionDetailQuery,
-  useUpdateTransactionStatusMutation,
   useUpdateTransactionMutation,
   useUpdateItemStatusMutation,
   useAddPaymentMutation,
 } from '@/hooks/useTransactionsQuery';
-import { TRANSACTION_STATUS_VALUES, PAYMENT_METHOD_VALUES } from '@/lib/constants';
+import { PAYMENT_METHOD_VALUES } from '@/lib/constants';
 import { generateGmailLink, EMAIL_TEMPLATES, EMAIL_TEMPLATE_LABELS } from '@/utils/email';
 import type { EmailTemplateKey } from '@/utils/email';
-import type { TransactionStatus, PaymentMethod } from '@/lib/types';
+import type { PaymentMethod } from '@/lib/types';
 
 export default function TransactionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -53,7 +52,6 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const initializedRef = useRef<string | null>(null);
 
   const { data: txn, isLoading, isFetching } = useTransactionDetailQuery(id);
-  const updateStatusMut = useUpdateTransactionStatusMutation(id);
   const updateTxnMut = useUpdateTransactionMutation(id);
   const updateItemStatusMut = useUpdateItemStatusMutation(id);
 

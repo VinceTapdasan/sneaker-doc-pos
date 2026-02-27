@@ -17,13 +17,19 @@ export function useTransactionsQuery(params?: Record<string, string>) {
   });
 }
 
-export function useTransactionReportQuery(year: number, month: number, options?: { enabled?: boolean }) {
+export function useTransactionReportQuery(
+  year: number,
+  month: number,
+  options?: { enabled?: boolean; branchId?: number },
+) {
   const from = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const to = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  const params: Record<string, string> = { from, to, limit: '500' };
+  if (options?.branchId) params.branchId = String(options.branchId);
   return useQuery({
-    queryKey: ['transactions-report', year, month],
-    queryFn: () => api.transactions.list({ from, to, limit: '500' }),
+    queryKey: ['transactions-report', year, month, options?.branchId],
+    queryFn: () => api.transactions.list(params),
     staleTime: 2 * 60 * 1000,
     enabled: options?.enabled ?? true,
   });
@@ -128,6 +134,15 @@ export function useAddPaymentMutation(txnId: string, onSuccess?: () => void) {
       onSuccess?.();
     },
     onError: (err: Error) => toast.error('Failed to record payment', { description: err.message }),
+  });
+}
+
+export function useTodayCollectionsQuery() {
+  return useQuery({
+    queryKey: ['today-collections'],
+    queryFn: () => api.transactions.todayCollections(),
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
   });
 }
 

@@ -24,11 +24,24 @@ export class TransactionsController {
 
   @UseGuards(SupabaseAuthGuard)
   @Get()
-  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.transactionsService.findAll(
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 50,
-    );
+  findAll(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.transactionsService.findAll({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 50,
+      status: status || undefined,
+      search: search || undefined,
+      from: from || undefined,
+      to: to || undefined,
+      branchId: branchId ? parseInt(branchId, 10) : undefined,
+    });
   }
 
   @UseGuards(SupabaseAuthGuard)
@@ -43,6 +56,12 @@ export class TransactionsController {
   @Get('upcoming')
   findUpcoming() {
     return this.transactionsService.findUpcoming();
+  }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Get('today-collections')
+  todayCollections() {
+    return this.transactionsService.todayCollections();
   }
 
   @UseGuards(SupabaseAuthGuard)

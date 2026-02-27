@@ -10,6 +10,8 @@ import type {
   ClaimPayment,
   TransactionItem,
   AppUser,
+  Branch,
+  TodayCollection,
 } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -46,6 +48,7 @@ export const api = {
     },
     recent: (limit = 10) => apiFetch<Transaction[]>(`/transactions/recent?limit=${limit}`),
     upcoming: () => apiFetch<Transaction[]>('/transactions/upcoming'),
+    todayCollections: () => apiFetch<TodayCollection[]>('/transactions/today-collections'),
     get: (id: number) => apiFetch<Transaction>(`/transactions/${id}`),
     getByNumber: (number: string) => apiFetch<Transaction>(`/transactions/number/${number}`),
     create: (body: Partial<Omit<Transaction, 'items'>> & { items?: Record<string, unknown>[] }) =>
@@ -109,5 +112,15 @@ export const api = {
 
   users: {
     me: () => apiFetch<AppUser>('/users/me'),
+    onboard: (branchId: number) =>
+      apiFetch<AppUser>('/users/me/onboard', {
+        method: 'PATCH',
+        body: JSON.stringify({ branchId }),
+      }),
+  },
+
+  branches: {
+    list: (activeOnly?: boolean) =>
+      apiFetch<Branch[]>(`/branches${activeOnly ? '?active=1' : ''}`),
   },
 };

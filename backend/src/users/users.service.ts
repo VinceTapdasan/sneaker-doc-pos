@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import { users } from '../db/schema';
@@ -27,5 +27,22 @@ export class UsersService {
       .from(users)
       .where(eq(users.id, id));
     return user ?? null;
+  }
+
+  async onboard(id: string, branchId: number) {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+
+    const [updated] = await this.drizzle.db
+      .update(users)
+      .set({ branchId })
+      .where(eq(users.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getBranchId(userId: string): Promise<number | null> {
+    const user = await this.findById(userId);
+    return user?.branchId ?? null;
   }
 }

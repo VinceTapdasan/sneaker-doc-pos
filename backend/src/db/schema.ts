@@ -14,6 +14,18 @@ import {
 import { relations } from 'drizzle-orm';
 
 // ---------------------------------------------------------------------------
+// branches
+// ---------------------------------------------------------------------------
+export const branches = pgTable('branches', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).unique().notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // services
 // ---------------------------------------------------------------------------
 export const services = pgTable('services', {
@@ -61,6 +73,9 @@ export const transactions = pgTable('transactions', {
   total: numeric('total', { precision: 10, scale: 2 }).default('0').notNull(),
   paid: numeric('paid', { precision: 10, scale: 2 }).default('0').notNull(),
   promoId: integer('promo_id').references(() => promos.id, {
+    onDelete: 'set null',
+  }),
+  branchId: integer('branch_id').references(() => branches.id, {
     onDelete: 'set null',
   }),
   createdAt: timestamp('created_at', { withTimezone: true })
@@ -138,6 +153,9 @@ export const users = pgTable('users', {
   id: uuid('id').primaryKey(), // matches auth.users.id
   email: varchar('email', { length: 255 }).notNull(),
   userType: varchar('user_type', { length: 20 }).default('staff').notNull(), // admin | staff | superadmin
+  branchId: integer('branch_id').references(() => branches.id, {
+    onDelete: 'set null',
+  }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -152,10 +170,14 @@ export const auditLog = pgTable('audit_log', {
     .defaultNow()
     .notNull(),
   action: varchar('action', { length: 100 }).notNull(), // create | update | delete | status_change | payment_add
+  auditType: varchar('audit_type', { length: 100 }), // see AUDIT_TYPE constants
   entityType: varchar('entity_type', { length: 50 }).notNull(), // transaction | service | promo | expense
   entityId: varchar('entity_id', { length: 50 }),
   source: varchar('source', { length: 50 }), // pos | admin
   performedBy: uuid('performed_by'), // references auth.users (no FK constraint — Supabase auth schema)
+  branchId: integer('branch_id').references(() => branches.id, {
+    onDelete: 'set null',
+  }),
   details: jsonb('details'),
 });
 
@@ -201,4 +223,16 @@ export const servicesRelations = relations(services, ({ many }) => ({
 
 export const promosRelations = relations(promos, ({ many }) => ({
   transactions: many(transactions),
+}));
+
+export const branchesRelations = relations(branches, ({ many }) => ({
+  users: many(users),
+  transactions: many(transactions),
+}));
+
+export const usersRelations = relations(users, ({ one }) => ({
+  branch: one(branches, {
+    fields: [users.branchId],
+    references: [branches.id],
+  }),
 }));

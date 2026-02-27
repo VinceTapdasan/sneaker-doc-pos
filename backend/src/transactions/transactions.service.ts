@@ -1,19 +1,38 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { eq, desc, sql, gte, lte, and, not, inArray } from 'drizzle-orm';
+import { eq, desc, sql, gte, lte, and, not, inArray, ilike, or } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
-import { transactions, transactionItems, claimPayments, customers, promos, services } from '../db/schema';
-import { TRANSACTION_STATUS } from '../db/constants';
+import {
+  transactions,
+  transactionItems,
+  claimPayments,
+  customers,
+  promos,
+  services,
+} from '../db/schema';
+import { TRANSACTION_STATUS, AUDIT_TYPE, type AuditType } from '../db/constants';
 import { AuditService } from '../audit/audit.service';
+import { UsersService } from '../users/users.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
+
+export interface FindAllParams {
+  page?: number;
+  limit?: number;
+  status?: string;
+  search?: string;
+  from?: string;
+  to?: string;
+  branchId?: number;
+}
 
 @Injectable()
 export class TransactionsService {
   constructor(
     private readonly drizzle: DrizzleService,
     private readonly audit: AuditService,
+    private readonly users: UsersService,
   ) {}
 
   // Generate next zero-padded transaction number using a DB sequence-safe query
@@ -27,11 +46,30 @@ export class TransactionsService {
     return String(next).padStart(4, '0');
   }
 
-  async findAll(page = 1, limit = 50) {
+  async findAll(params: FindAllParams = {}) {
+    const { page = 1, limit = 50, status, search, from, to, branchId } = params;
     const offset = (page - 1) * limit;
+
+    const conditions: ReturnType<typeof eq>[] = [];
+
+    if (status) conditions.push(eq(transactions.status, status));
+    if (branchId) conditions.push(eq(transactions.branchId, branchId));
+    if (from) conditions.push(gte(transactions.createdAt, new Date(`${from}T00:00:00`)));
+    if (to) conditions.push(lte(transactions.createdAt, new Date(`${to}T23:59:59`)));
+    if (search) {
+      conditions.push(
+        or(
+          ilike(transactions.number, `%${search}%`),
+          ilike(transactions.customerName, `%${search}%`),
+          ilike(transactions.customerPhone, `%${search}%`),
+        ) as ReturnType<typeof eq>,
+      );
+    }
+
     return this.drizzle.db
       .select()
       .from(transactions)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(transactions.createdAt))
       .limit(limit)
       .offset(offset);
@@ -97,6 +135,9 @@ export class TransactionsService {
   ) {
     const number = await this.nextNumber();
 
+    // Resolve branch from the performing user
+    const branchId = performedBy ? await this.users.getBranchId(performedBy) : null;
+
     const [created] = await this.drizzle.db
       .insert(transactions)
       .values({
@@ -109,6 +150,7 @@ export class TransactionsService {
         total: dto.total ?? '0',
         paid: dto.paid ?? '0',
         promoId: dto.promoId ?? null,
+        branchId: branchId ?? null,
         updatedAt: new Date(),
       })
       .returning();
@@ -149,11 +191,13 @@ export class TransactionsService {
 
     await this.audit.log({
       action: 'create',
+      auditType: AUDIT_TYPE.TRANSACTION_CREATED,
       entityType: 'transaction',
       entityId: created.number,
       source,
       performedBy,
-      details: { number: created.number, customerName: created.customerName },
+      branchId: branchId ?? undefined,
+      details: { number: created.number, customerName: created.customerName, total: created.total },
     });
 
     return this.findOne(created.id);
@@ -185,19 +229,40 @@ export class TransactionsService {
       .where(eq(transactions.id, id))
       .returning();
 
-    const action =
-      dto.status && dto.status !== prevStatus ? 'status_change' : 'update';
+    // Determine audit type
+    let action = 'update';
+    let auditType: AuditType = AUDIT_TYPE.TRANSACTION_UPDATED;
+    let auditDetails: Record<string, unknown> = { fields: Object.keys(dto) };
+
+    if (dto.status && dto.status !== prevStatus) {
+      action = 'status_change';
+      auditDetails = { from: prevStatus, to: dto.status };
+      if (dto.status === TRANSACTION_STATUS.CLAIMED) {
+        auditType = AUDIT_TYPE.TRANSACTION_CLAIMED;
+      } else if (dto.status === TRANSACTION_STATUS.CANCELLED) {
+        auditType = AUDIT_TYPE.TRANSACTION_CANCELLED;
+      } else {
+        auditType = AUDIT_TYPE.TRANSACTION_STATUS_CHANGED;
+      }
+    } else if (dto.newPickupDate !== undefined && dto.newPickupDate !== existing.newPickupDate) {
+      auditType = AUDIT_TYPE.PICKUP_RESCHEDULED;
+      auditDetails = {
+        from: existing.newPickupDate ?? existing.pickupDate,
+        to: dto.newPickupDate,
+      };
+    }
+
+    const branchId = performedBy ? await this.users.getBranchId(performedBy) : null;
 
     await this.audit.log({
       action,
+      auditType,
       entityType: 'transaction',
       entityId: updated.number,
       source,
       performedBy,
-      details:
-        action === 'status_change'
-          ? { from: prevStatus, to: dto.status }
-          : { fields: Object.keys(dto) },
+      branchId: branchId ?? undefined,
+      details: auditDetails,
     });
 
     return this.findOne(id);
@@ -229,6 +294,60 @@ export class TransactionsService {
       .orderBy(transactions.pickupDate);
   }
 
+  async todayCollections() {
+    const today = new Date().toISOString().split('T')[0];
+    return this.drizzle.db
+      .select({
+        id: claimPayments.id,
+        transactionId: claimPayments.transactionId,
+        method: claimPayments.method,
+        amount: claimPayments.amount,
+        paidAt: claimPayments.paidAt,
+        txnNumber: transactions.number,
+        customerName: transactions.customerName,
+      })
+      .from(claimPayments)
+      .innerJoin(transactions, eq(claimPayments.transactionId, transactions.id))
+      .where(sql`${claimPayments.paidAt}::date = ${today}::date`)
+      .orderBy(desc(claimPayments.paidAt));
+  }
+
+  // Auto-sync transaction status when items change (multi-item only)
+  private async syncTransactionStatus(transactionId: number): Promise<void> {
+    const [txn] = await this.drizzle.db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.id, transactionId));
+    if (!txn || txn.status === 'cancelled') return;
+
+    const items = await this.drizzle.db
+      .select()
+      .from(transactionItems)
+      .where(eq(transactionItems.transactionId, transactionId));
+
+    if (items.length <= 1) return; // Only auto-sync multi-item transactions
+
+    const nonCancelledItems = items.filter((i) => i.status !== 'cancelled');
+    if (nonCancelledItems.length === 0) return;
+
+    const allClaimed = nonCancelledItems.every((i) => i.status === 'claimed');
+    if (allClaimed && txn.status !== 'claimed') {
+      await this.drizzle.db
+        .update(transactions)
+        .set({ status: 'claimed', claimedAt: new Date(), updatedAt: new Date() })
+        .where(eq(transactions.id, transactionId));
+      return;
+    }
+
+    const someClaimed = nonCancelledItems.some((i) => i.status === 'claimed');
+    if (someClaimed && txn.status !== 'in_progress' && txn.status !== 'claimed') {
+      await this.drizzle.db
+        .update(transactions)
+        .set({ status: 'in_progress', updatedAt: new Date() })
+        .where(eq(transactions.id, transactionId));
+    }
+  }
+
   async updateItem(
     transactionId: number,
     itemId: number,
@@ -251,12 +370,16 @@ export class TransactionsService {
       .returning();
 
     if (dto.status && dto.status !== existing.status) {
+      const branchId = performedBy ? await this.users.getBranchId(performedBy) : null;
+
       await this.audit.log({
         action: 'status_change',
+        auditType: AUDIT_TYPE.ITEM_STATUS_CHANGED,
         entityType: 'transaction_item',
         entityId: String(itemId),
         source: 'pos',
         performedBy,
+        branchId: branchId ?? undefined,
         details: {
           transactionNumber: txn.number,
           from: existing.status,
@@ -264,6 +387,9 @@ export class TransactionsService {
           shoe: existing.shoeDescription,
         },
       });
+
+      // Auto-sync parent transaction status
+      await this.syncTransactionStatus(transactionId);
     }
 
     return updated;
@@ -287,13 +413,17 @@ export class TransactionsService {
       .set({ paid: newPaid, updatedAt: new Date() })
       .where(eq(transactions.id, id));
 
+    const branchId = performedBy ? await this.users.getBranchId(performedBy) : null;
+
     await this.audit.log({
       action: 'payment_add',
+      auditType: AUDIT_TYPE.PAYMENT_ADDED,
       entityType: 'transaction',
       entityId: txn.number,
       source: 'pos',
       performedBy,
-      details: { method: dto.method, amount: dto.amount },
+      branchId: branchId ?? undefined,
+      details: { method: dto.method, amount: dto.amount, newPaid },
     });
 
     return payment;
@@ -304,12 +434,16 @@ export class TransactionsService {
 
     await this.drizzle.db.delete(transactions).where(eq(transactions.id, id));
 
+    const branchId = performedBy ? await this.users.getBranchId(performedBy) : null;
+
     await this.audit.log({
       action: 'delete',
+      auditType: AUDIT_TYPE.TRANSACTION_CANCELLED,
       entityType: 'transaction',
       entityId: txn.number,
       source: 'admin',
       performedBy,
+      branchId: branchId ?? undefined,
     });
   }
 }
