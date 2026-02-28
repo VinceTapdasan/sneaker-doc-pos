@@ -1,7 +1,7 @@
 export const ROUTES = {
   ROOT: '/',
   LOGIN: '/login',
-  DASHBOARD: '/dashboard',
+  DASHBOARD: '/',
   TRANSACTIONS: '/transactions',
   SERVICES: '/services',
   PROMOS: '/promos',
@@ -13,12 +13,12 @@ export const ROUTES = {
   ONBOARDING: '/onboarding',
 } as const;
 
+// '/' (dashboard) is protected directly in proxy.ts — not here, since startsWith('/') matches everything
 export const PROTECTED_ROUTES: string[] = [
   ROUTES.TRANSACTIONS,
   ROUTES.SERVICES,
   ROUTES.PROMOS,
   ROUTES.EXPENSES,
-  ROUTES.DASHBOARD,
   ROUTES.AUDIT,
   ROUTES.BRANCHES,
   ROUTES.USERS,
