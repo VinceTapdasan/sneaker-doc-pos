@@ -22,8 +22,14 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-    if (!error && data.user) {
-      return NextResponse.redirect(`${origin}/dashboard`);
+    if (!error && data.user && data.session) {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+      await fetch(`${apiUrl}/users/provision`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${data.session.access_token}` },
+      }).catch(() => null); // non-fatal — user may already exist
+
+      return NextResponse.redirect(`${origin}/`);
     }
   }
 
