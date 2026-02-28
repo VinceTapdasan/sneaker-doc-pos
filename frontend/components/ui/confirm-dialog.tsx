@@ -11,8 +11,10 @@ import { Button } from '@/components/ui/button';
 interface ConfirmDialogProps {
   open: boolean;
   title: string;
-  description: string;
+  description?: string;
+  children?: React.ReactNode;
   confirmLabel?: string;
+  confirmVariant?: 'danger' | 'dark' | 'primary';
   onConfirm: () => void;
   onCancel: () => void;
   loading?: boolean;
@@ -22,7 +24,9 @@ export function ConfirmDialog({
   open,
   title,
   description,
-  confirmLabel = 'Delete',
+  children,
+  confirmLabel = 'Confirm',
+  confirmVariant = 'dark',
   onConfirm,
   onCancel,
   loading = false,
@@ -32,13 +36,14 @@ export function ConfirmDialog({
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
+        {children && <div className="text-sm">{children}</div>}
         <DialogFooter>
           <Button size="sm" variant="ghost" onClick={onCancel} disabled={loading}>
             Cancel
           </Button>
-          <Button size="sm" variant="danger" onClick={onConfirm} disabled={loading}>
+          <Button size="sm" variant={confirmVariant} onClick={onConfirm} disabled={loading}>
             {confirmLabel}
           </Button>
         </DialogFooter>

@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftIcon, PlusIcon, EnvelopeIcon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, PlusIcon, EnvelopeIcon, ArrowRightIcon } from '@phosphor-icons/react';
 import { Lightbox } from '@/components/ui/lightbox';
 import Link from 'next/link';
 import { formatPeso, formatDate, formatDatetime, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
@@ -35,7 +35,8 @@ import {
 import { PAYMENT_METHOD_VALUES } from '@/lib/constants';
 import { generateGmailLink, EMAIL_TEMPLATES, EMAIL_TEMPLATE_LABELS } from '@/utils/email';
 import type { EmailTemplateKey } from '@/utils/email';
-import type { PaymentMethod } from '@/lib/types';
+import type { PaymentMethod, ItemStatus } from '@/lib/types';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export default function TransactionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -56,6 +57,15 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const updateItemStatusMut = useUpdateItemStatusMutation(id);
 
   const [loadingItemIds, setLoadingItemIds] = useState<Set<number>>(new Set());
+  const [pendingItemChange, setPendingItemChange] = useState<{
+    itemId: number;
+    newStatus: ItemStatus;
+    currentStatus: string;
+    shoeDescription: string;
+    serviceName: string;
+  } | null>(null);
+  const txnRef = useRef(txn);
+  useEffect(() => { txnRef.current = txn; }, [txn]);
 
   useEffect(() => {
     if (!isFetching && !updateItemStatusMut.isPending && loadingItemIds.size > 0) {
@@ -76,8 +86,14 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const itemColumns = useMemo(
     () => createTransactionItemColumns({
       onStatusChange: (itemId, status) => {
-        setLoadingItemIds((prev) => new Set([...prev, itemId]));
-        updateItemStatusMut.mutate({ itemId, status });
+        const item = txnRef.current?.items?.find((i) => i.id === itemId);
+        setPendingItemChange({
+          itemId,
+          newStatus: status,
+          currentStatus: item?.status ?? '',
+          shoeDescription: item?.shoeDescription ?? '',
+          serviceName: item?.service?.name ?? '',
+        });
       },
       onImageClick: (src, label) => setLightbox({ src, label }),
       loadingItemIds,
@@ -411,6 +427,46 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
         alt={lightbox?.label}
         onClose={() => setLightbox(null)}
       />
+
+      <ConfirmDialog
+        open={pendingItemChange !== null}
+        title="Change item status?"
+        confirmLabel="Update Status"
+        confirmVariant="dark"
+        loading={updateItemStatusMut.isPending}
+        onConfirm={() => {
+          if (!pendingItemChange) return;
+          setPendingItemChange(null);
+          setLoadingItemIds((prev) => new Set([...prev, pendingItemChange.itemId]));
+          updateItemStatusMut.mutate({ itemId: pendingItemChange.itemId, status: pendingItemChange.newStatus });
+        }}
+        onCancel={() => setPendingItemChange(null)}
+      >
+        {pendingItemChange && (
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-zinc-500">Customer</span>
+              <span className="text-zinc-950">{toTitleCase(txn.customerName) || '—'}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-zinc-500">Shoe</span>
+              <span className="text-zinc-950">{toTitleCase(pendingItemChange.shoeDescription) || '—'}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-zinc-500">Service</span>
+              <span className="text-zinc-950">{pendingItemChange.serviceName || '—'}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-zinc-500">Status</span>
+              <div className="flex items-center gap-2">
+                <StatusBadge status={pendingItemChange.currentStatus} />
+                <ArrowRightIcon size={12} className="text-zinc-400" />
+                <StatusBadge status={pendingItemChange.newStatus} />
+              </div>
+            </div>
+          </div>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }

@@ -227,7 +227,7 @@ export function Sidebar() {
       )}
 
       {/* Mobile top bar */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-20 h-14 bg-white border-b border-zinc-200 flex items-center px-4 gap-3">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-20 h-14 bg-white border-b border-zinc-200 flex items-center px-4 gap-3">
         <button
           onClick={() => setMobileOpen(true)}
           className="p-1.5 text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 rounded-md transition-colors"
@@ -246,7 +246,7 @@ export function Sidebar() {
       {/* Mobile overlay */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-30 bg-black/40"
+          className="lg:hidden fixed inset-0 z-30 bg-black/40"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -254,7 +254,7 @@ export function Sidebar() {
       {/* Mobile drawer */}
       <aside
         className={cn(
-          'md:hidden fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-zinc-200 flex flex-col transition-transform duration-200',
+          'lg:hidden fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-zinc-200 flex flex-col transition-transform duration-200',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
@@ -278,7 +278,7 @@ export function Sidebar() {
       </aside>
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex fixed inset-y-0 left-0 w-56 bg-white border-r border-zinc-200 flex-col z-10">
+      <aside className="hidden lg:flex fixed inset-y-0 left-0 w-56 bg-white border-r border-zinc-200 flex-col z-10">
         <div className="px-5 py-5 border-b border-zinc-200 flex justify-center">
           <Image
             src="/sneaker-doc-logo.png"

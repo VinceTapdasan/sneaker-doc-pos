@@ -1,16 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useRef } from 'react';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { PlusIcon, TrashIcon, ArrowLeftIcon, CameraIcon } from '@phosphor-icons/react';
+import { PlusIcon, TrashIcon, ArrowLeftIcon, CameraIcon, ArrowRightIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { cn, formatDate, formatPeso } from '@/lib/utils';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
@@ -22,8 +23,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useCustomerByPhoneQuery } from '@/hooks/useCustomersQuery';
-import type { Service, Promo } from '@/lib/types';
+import type { Service, Promo, Customer } from '@/lib/types';
+import { calcItemPrice, calcRawTotal, findPromo, applyPromo } from '@/utils/pricing';
 
 const itemSchema = z.object({
   shoeDescription: z.string().min(1, 'Shoe description is required'),
@@ -97,51 +98,46 @@ export function NewTransactionForm() {
   const watchedPromoId = useWatch({ control, name: 'promoId' }) ?? 'none';
   const phoneValue = useWatch({ control, name: 'customerPhone' }) ?? '';
 
-  const [debouncedPhone, setDebouncedPhone] = useState('');
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedPhone(phoneValue), 400);
-    return () => clearTimeout(t);
-  }, [phoneValue]);
+  const [customerStep, setCustomerStep] = useState<'phone' | 'details'>('phone');
+  const [existingCustomer, setExistingCustomer] = useState<Customer | null | undefined>(undefined);
+  const [lookingUp, setLookingUp] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState<FormData | null>(null);
+  const pendingSubmitStable = useRef<FormData | null>(null);
+  if (pendingSubmit !== null) pendingSubmitStable.current = pendingSubmit;
 
-  const { data: existingCustomer, isFetching: customerLookingUp } = useCustomerByPhoneQuery(debouncedPhone);
-
-  useEffect(() => {
-    if (existingCustomer) {
-      if (existingCustomer.name) setValue('customerName', existingCustomer.name);
-      if (existingCustomer.email) setValue('customerEmail', existingCustomer.email);
+  async function handleFindCustomer() {
+    if (phoneValue.length !== 11) return;
+    setLookingUp(true);
+    try {
+      const customer = await api.customers.findByPhone(phoneValue);
+      setExistingCustomer(customer);
+      if (customer) {
+        if (customer.name) setValue('customerName', customer.name);
+        if (customer.email) setValue('customerEmail', customer.email);
+      }
+    } catch {
+      setExistingCustomer(null);
+    } finally {
+      setLookingUp(false);
+      setCustomerStep('details');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existingCustomer]);
+  }
 
-  const rawTotal = (watchedItems ?? []).reduce((sum, item) => {
-    const primarySvc = item?.primaryServiceId
-      ? (services as Service[]).find((s) => s.id === parseInt(item.primaryServiceId, 10))
-      : null;
-    const addonTotal = (item?.addonServiceIds ?? []).reduce((aSum, id) => {
-      const svc = (services as Service[]).find((s) => s.id === parseInt(id, 10));
-      return aSum + (svc ? parseFloat(svc.price) : 0);
-    }, 0);
-    return sum + (primarySvc ? parseFloat(primarySvc.price) : 0) + addonTotal;
-  }, 0);
+  function handleChangePhone() {
+    setCustomerStep('phone');
+    setExistingCustomer(undefined);
+    setValue('customerName', '');
+    setValue('customerEmail', '');
+  }
 
-  const selectedPromo = watchedPromoId && watchedPromoId !== 'none'
-    ? validPromos.find((p) => String(p.id) === watchedPromoId) ?? null
-    : null;
-  const total = selectedPromo
-    ? rawTotal * (1 - parseFloat(selectedPromo.percent) / 100)
-    : rawTotal;
+  const rawTotal = calcRawTotal(watchedItems ?? [], services as Service[]);
+  const selectedPromo = findPromo(watchedPromoId, validPromos);
+  const total = applyPromo(rawTotal, selectedPromo);
 
   const createMut = useMutation({
     mutationFn: (data: FormData) => {
       const allItems = data.items.map((i) => {
-        const primarySvc = i.primaryServiceId
-          ? (services as Service[]).find((s) => s.id === parseInt(i.primaryServiceId, 10))
-          : null;
-        const addonTotal = (i.addonServiceIds ?? []).reduce((sum, id) => {
-          const svc = (services as Service[]).find((s) => s.id === parseInt(id, 10));
-          return sum + (svc ? parseFloat(svc.price) : 0);
-        }, 0);
-        const itemPrice = (primarySvc ? parseFloat(primarySvc.price) : 0) + addonTotal;
+        const itemPrice = calcItemPrice(i, services as Service[]);
         return {
           shoeDescription: i.shoeDescription || undefined,
           serviceId: i.primaryServiceId ? parseInt(i.primaryServiceId, 10) : undefined,
@@ -154,7 +150,7 @@ export function NewTransactionForm() {
         customerName: data.customerName || undefined,
         customerPhone: data.customerPhone || undefined,
         customerEmail: data.customerEmail || undefined,
-        isExistingCustomer: !!existingCustomer,
+        isExistingCustomer: existingCustomer != null,
         pickupDate: data.pickupDate || undefined,
         note: data.note || undefined,
         promoId: data.promoId && data.promoId !== 'none' ? parseInt(data.promoId, 10) : undefined,
@@ -185,55 +181,96 @@ export function NewTransactionForm() {
         }
       />
 
-      <form onSubmit={handleSubmit((data) => createMut.mutate(data))}>
+      <form onSubmit={handleSubmit((data) => setPendingSubmit(data))}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
           <div className="col-span-2 space-y-6">
             {/* Customer */}
             <div className="bg-white border border-zinc-200 rounded-lg p-5">
-              <h2 className="text-sm font-semibold text-zinc-950 mb-4">Customer</h2>
+              <div className="flex items-center gap-2 mb-4">
+                {customerStep === 'details' && (
+                  <button
+                    type="button"
+                    onClick={handleChangePhone}
+                    className="p-1.5 text-zinc-500 hover:text-zinc-950 bg-zinc-100 hover:bg-zinc-200 rounded-md transition-colors"
+                    title="Change number"
+                  >
+                    <ArrowLeftIcon size={13} weight="bold" />
+                  </button>
+                )}
+                <h2 className="text-sm font-semibold text-zinc-950">Customer</h2>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="col-span-2 flex flex-col gap-1.5">
-                  <Input
-                    label="Name"
-                    placeholder="Juan dela Cruz"
-                    {...register('customerName')}
-                  />
-                  {errors.customerName && (
-                    <p className="text-xs text-red-500">{errors.customerName.message}</p>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-zinc-700">Phone</span>
-                    {customerLookingUp && debouncedPhone.length === 11 && (
-                      <span className="text-xs text-zinc-400">Looking up...</span>
-                    )}
-                    {!customerLookingUp && existingCustomer && (
-                      <span className="text-xs text-emerald-600 font-medium">Existing customer</span>
-                    )}
-                    {!customerLookingUp && debouncedPhone.length === 11 && existingCustomer === null && (
-                      <span className="text-xs text-zinc-400">New customer</span>
+                {customerStep === 'phone' ? (
+                  /* Step 1 — phone input full width with find button */
+                  <div className="col-span-2 flex flex-col gap-1.5">
+                    <span className="text-xs font-medium text-zinc-700">Phone number</span>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="09XX XXX XXXX"
+                        className="flex-1 w-full"
+                        {...register('customerPhone')}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleFindCustomer();
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="dark"
+                        size="sm"
+                        disabled={phoneValue.length !== 11 || lookingUp}
+                        onClick={handleFindCustomer}
+                        className="shrink-0"
+                      >
+                        {lookingUp ? <Spinner /> : <ArrowRightIcon size={14} weight="bold" />}
+                      </Button>
+                    </div>
+                    {errors.customerPhone && (
+                      <p className="text-xs text-red-500">{errors.customerPhone.message}</p>
                     )}
                   </div>
-                  <Input
-                    placeholder="09XX XXX XXXX"
-                    {...register('customerPhone')}
-                  />
-                  {errors.customerPhone && (
-                    <p className="text-xs text-red-500">{errors.customerPhone.message}</p>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Input
-                    label="Email"
-                    type="email"
-                    placeholder="juan@example.com"
-                    {...register('customerEmail')}
-                  />
-                  {errors.customerEmail && (
-                    <p className="text-xs text-red-500">{errors.customerEmail.message}</p>
-                  )}
-                </div>
+                ) : (
+                  /* Step 2 — Name full width, Phone + Email side by side */
+                  <>
+                    <div className="col-span-2 flex flex-col gap-1.5">
+                      <Input
+                        label="Name"
+                        placeholder="Juan dela Cruz"
+                        {...register('customerName')}
+                      />
+                      {errors.customerName && (
+                        <p className="text-xs text-red-500">{errors.customerName.message}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-xs font-medium text-zinc-700">Phone</span>
+                      <Input
+                        placeholder="09XX XXX XXXX"
+                        className="w-full"
+                        readOnly
+                        {...register('customerPhone')}
+                      />
+                      {existingCustomer
+                        ? <p className="text-xs text-emerald-600">Existing customer</p>
+                        : <p className="text-xs text-zinc-400">New customer</p>
+                      }
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Input
+                        label="Email"
+                        type="email"
+                        placeholder="juan@example.com"
+                        {...register('customerEmail')}
+                      />
+                      {errors.customerEmail && (
+                        <p className="text-xs text-red-500">{errors.customerEmail.message}</p>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -472,6 +509,106 @@ export function NewTransactionForm() {
           </div>
         </div>
       </form>
+
+      <ConfirmDialog
+        open={pendingSubmit !== null}
+        title="Create transaction?"
+        confirmLabel="Confirm & Create"
+        confirmVariant="dark"
+        loading={createMut.isPending}
+        onConfirm={() => {
+          if (!pendingSubmit) return;
+          createMut.mutate(pendingSubmit);
+        }}
+        onCancel={() => setPendingSubmit(null)}
+      >
+        {(() => {
+          const d = pendingSubmitStable.current;
+          if (!d) return null;
+          return (
+            <div className="space-y-4">
+              {/* Customer grid */}
+              <div>
+                <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-2">Customer</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {d.customerName && (
+                    <div className="bg-zinc-50 rounded-md p-2.5">
+                      <p className="text-xs text-zinc-400 mb-0.5">Name</p>
+                      <p className="text-sm text-zinc-950 truncate">{d.customerName}</p>
+                    </div>
+                  )}
+                  <div className="bg-zinc-50 rounded-md p-2.5">
+                    <p className="text-xs text-zinc-400 mb-0.5">Phone</p>
+                    <p className="text-sm font-mono text-zinc-950">{d.customerPhone}</p>
+                  </div>
+                  <div className="bg-zinc-50 rounded-md p-2.5">
+                    <p className="text-xs text-zinc-400 mb-0.5">Pickup</p>
+                    <p className="text-sm text-zinc-950">{formatDate(d.pickupDate)}</p>
+                  </div>
+                  {existingCustomer !== undefined && (
+                    <div className="bg-zinc-50 rounded-md p-2.5">
+                      <p className="text-xs text-zinc-400 mb-0.5">Customer</p>
+                      <p className={`text-sm ${existingCustomer ? 'text-emerald-600' : 'text-zinc-500'}`}>
+                        {existingCustomer ? 'Existing' : 'New'}
+                      </p>
+                    </div>
+                  )}
+                  {selectedPromo && (
+                    <div className="bg-zinc-50 rounded-md p-2.5">
+                      <p className="text-xs text-zinc-400 mb-0.5">Promo</p>
+                      <p className="text-sm font-mono text-emerald-600">{selectedPromo.code} · -{parseFloat(selectedPromo.percent).toFixed(0)}%</p>
+                    </div>
+                  )}
+                  {d.note && (
+                    <div className="bg-zinc-50 rounded-md p-2.5 col-span-2">
+                      <p className="text-xs text-zinc-400 mb-0.5">Note</p>
+                      <p className="text-sm text-zinc-700 whitespace-pre-wrap">{d.note}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Items */}
+              <div>
+                <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-2">Items</p>
+                <div className="space-y-1.5">
+                  {d.items.map((item, idx) => {
+                    const svc = item.primaryServiceId
+                      ? (services as Service[]).find((s) => s.id === parseInt(item.primaryServiceId, 10))
+                      : null;
+                    const addons = (item.addonServiceIds ?? [])
+                      .map((id) => (services as Service[]).find((s) => s.id === parseInt(id, 10)))
+                      .filter(Boolean) as Service[];
+                    return (
+                      <div key={idx} className="bg-zinc-50 rounded-md p-2.5">
+                        <p className="text-sm text-zinc-950 truncate mb-1.5">{item.shoeDescription || `Item ${idx + 1}`}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {svc && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-zinc-200 text-zinc-600">
+                              {svc.name}
+                            </span>
+                          )}
+                          {addons.map((a) => (
+                            <span key={a.id} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-zinc-100 text-zinc-500">
+                              +{a.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Total */}
+              <div className="flex justify-between items-center border border-emerald-500 rounded-md px-3 py-2.5">
+                <span className="text-sm font-medium text-zinc-950">Total</span>
+                <span className="font-mono font-semibold text-emerald-600">{formatPeso(String(total.toFixed(2)))}</span>
+              </div>
+            </div>
+          );
+        })()}
+      </ConfirmDialog>
     </div>
   );
 }

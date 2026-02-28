@@ -7,7 +7,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '@/components/ui/select';
 import type { AppUser } from '@/lib/types';
 
@@ -19,8 +18,19 @@ const ROLE_STYLES: Record<string, string> = {
   superadmin: 'bg-violet-50 text-violet-700',
 };
 
+function RoleBadge({ role }: { role: string }) {
+  return (
+    <span className={cn(
+      'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium uppercase tracking-wide',
+      ROLE_STYLES[role] ?? 'bg-zinc-100 text-zinc-600',
+    )}>
+      {role}
+    </span>
+  );
+}
+
 interface UserColumnsOptions {
-  onRoleChange: (id: string, userType: string) => void;
+  onRoleChange: (id: string, newUserType: string, currentUserType: string, email: string) => void;
   currentUserId?: string;
 }
 
@@ -31,33 +41,29 @@ export const createUserColumns = ({ onRoleChange, currentUserId }: UserColumnsOp
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
         <span className="text-sm text-zinc-950">{row.original.email}</span>
-        {row.original.id === currentUserId && (
-          <span className="text-xs text-zinc-400">(you)</span>
-        )}
       </div>
     ),
   },
   {
     accessorKey: 'userType',
     header: 'Role',
+    size: 160,
     cell: ({ row }) => {
       const user = row.original;
       const isSelf = user.id === currentUserId;
       return (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center">
           {isSelf ? (
-            <span className={cn('inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wide', ROLE_STYLES[user.userType] ?? 'bg-zinc-100 text-zinc-600')}>
-              {user.userType}
-            </span>
+            <RoleBadge role={user.userType} />
           ) : (
-            <Select value={user.userType} onValueChange={(v) => onRoleChange(user.id, v)}>
-              <SelectTrigger className="h-7 text-xs w-32 border-zinc-200">
-                <SelectValue />
+            <Select value={user.userType} onValueChange={(v) => onRoleChange(user.id, v, user.userType, user.email)}>
+              <SelectTrigger className="h-auto border-0 bg-transparent shadow-none p-0 gap-1.5 focus-visible:ring-0 w-auto">
+                <RoleBadge role={user.userType} />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper">
                 {ROLES.map((r) => (
-                  <SelectItem key={r} value={r} className="text-xs">
-                    {r}
+                  <SelectItem key={r} value={r}>
+                    <RoleBadge role={r} />
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -70,6 +76,7 @@ export const createUserColumns = ({ onRoleChange, currentUserId }: UserColumnsOp
   {
     accessorKey: 'createdAt',
     header: 'Joined',
+    size: 200,
     cell: ({ row }) => (
       <span className="text-xs text-zinc-400">{formatDatetime(row.original.createdAt)}</span>
     ),
