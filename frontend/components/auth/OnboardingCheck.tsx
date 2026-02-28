@@ -9,8 +9,8 @@ export function OnboardingCheck() {
   const { data: user, isLoading } = useCurrentUserQuery();
 
   useEffect(() => {
-    // Superadmin may not have a branch — skip onboarding for them
-    if (!isLoading && user && user.branchId === null && user.userType !== 'superadmin') {
+    // Admin and superadmin are not required to have a branch
+    if (!isLoading && user && user.branchId === null && user.userType === 'staff') {
       router.push('/onboarding');
     }
   }, [user, isLoading, router]);

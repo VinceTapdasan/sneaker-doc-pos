@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { api } from '@/lib/api';
 import { useBranchesQuery } from '@/hooks/useBranchesQuery';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,15 @@ export default function OnboardingPage() {
   const qc = useQueryClient();
   const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
 
+  const { data: currentUser, isLoading: userLoading } = useCurrentUserQuery();
   const { data: branches = [], isLoading: branchesLoading } = useBranchesQuery(true);
+
+  // Admin and superadmin don't need onboarding
+  useEffect(() => {
+    if (!userLoading && currentUser && currentUser.userType !== 'staff') {
+      router.replace('/');
+    }
+  }, [currentUser, userLoading, router]);
 
   const onboardMut = useMutation({
     mutationFn: (branchId: number) => api.users.onboard(branchId),
