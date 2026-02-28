@@ -72,6 +72,7 @@ export function DataTable<TData, TValue>({
                   <TableHead
                     key={header.id}
                     className="text-xs font-medium text-zinc-400 uppercase tracking-wider h-auto py-3"
+                    style={header.column.columnDef.size !== undefined ? { width: header.column.columnDef.size, minWidth: header.column.columnDef.size } : undefined}
                   >
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>
