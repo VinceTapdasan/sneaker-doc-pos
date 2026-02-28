@@ -27,8 +27,8 @@ export default function OnboardingPage() {
   const onboardMut = useMutation({
     mutationFn: (branchId: number) => api.users.onboard(branchId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['current-user'] });
-      router.push('/transactions');
+      qc.removeQueries({ queryKey: ['current-user'] });
+      window.location.href = '/transactions';
     },
   });
 
