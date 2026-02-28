@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-import { LockSimpleIcon } from '@phosphor-icons/react';
+import { useMemo, useState } from 'react';
+import { LockSimpleIcon, ArrowRightIcon } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/ui/page-header';
 import { DataTable } from '@/components/ui/data-table';
@@ -10,6 +10,8 @@ import { useUsersQuery, useUpdateUserRoleMutation } from '@/hooks/useUsersQuery'
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { useBranchesQuery } from '@/hooks/useBranchesQuery';
 import { toTitleCase } from '@/utils/text';
+import { cn } from '@/lib/utils';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { AppUser } from '@/lib/types';
 
 export default function UsersPage() {
@@ -20,13 +22,17 @@ export default function UsersPage() {
   const { data: branches = [] } = useBranchesQuery(false);
   const updateRoleMut = useUpdateUserRoleMutation();
 
+  const [pendingRoleChange, setPendingRoleChange] = useState<{
+    id: string;
+    email: string;
+    currentRole: string;
+    newRole: string;
+  } | null>(null);
+
   const columns = useMemo(
     () => createUserColumns({
-      onRoleChange: (id, userType) => {
-        updateRoleMut.mutate(
-          { id, userType },
-          { onSuccess: () => toast.success('Role updated') },
-        );
+      onRoleChange: (id, newUserType, currentUserType, email) => {
+        setPendingRoleChange({ id, email, currentRole: currentUserType, newRole: newUserType });
       },
       currentUserId: currentUser?.id,
     }),
@@ -35,7 +41,7 @@ export default function UsersPage() {
   );
 
   const grouped = useMemo(() => {
-    const allUsers = users as AppUser[];
+    const allUsers = (users as AppUser[]).filter((u) => u.id !== currentUser?.id);
     const branchMap = new Map(branches.map((b) => [b.id, b.name]));
 
     const groups = new Map<string, { label: string; users: AppUser[] }>();
@@ -75,7 +81,50 @@ export default function UsersPage() {
     );
   }
 
+  const ROLE_STYLES: Record<string, string> = {
+    staff: 'bg-zinc-100 text-zinc-600',
+    admin: 'bg-blue-50 text-blue-600',
+    superadmin: 'bg-violet-50 text-violet-700',
+  };
+
   return (
+    <>
+      <ConfirmDialog
+        open={pendingRoleChange !== null}
+        title="Change user role?"
+        confirmLabel="Update Role"
+        confirmVariant="dark"
+        loading={updateRoleMut.isPending}
+        onConfirm={() => {
+          if (!pendingRoleChange) return;
+          updateRoleMut.mutate(
+            { id: pendingRoleChange.id, userType: pendingRoleChange.newRole },
+            { onSuccess: () => { toast.success('Role updated'); setPendingRoleChange(null); } },
+          );
+        }}
+        onCancel={() => setPendingRoleChange(null)}
+      >
+        {pendingRoleChange && (
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-zinc-500">User</span>
+              <span className="text-zinc-950 truncate max-w-[200px]">{pendingRoleChange.email}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-zinc-500">Role</span>
+              <div className="flex items-center gap-2">
+                <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium uppercase tracking-wide', ROLE_STYLES[pendingRoleChange.currentRole] ?? 'bg-zinc-100 text-zinc-600')}>
+                  {pendingRoleChange.currentRole}
+                </span>
+                <ArrowRightIcon size={12} className="text-zinc-400" />
+                <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium uppercase tracking-wide', ROLE_STYLES[pendingRoleChange.newRole] ?? 'bg-zinc-100 text-zinc-600')}>
+                  {pendingRoleChange.newRole}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </ConfirmDialog>
     <div>
       <PageHeader
         title="Users"
@@ -114,5 +163,6 @@ export default function UsersPage() {
         </div>
       )}
     </div>
+    </>
   );
 }
