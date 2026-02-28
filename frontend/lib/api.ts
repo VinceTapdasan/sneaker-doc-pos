@@ -16,6 +16,13 @@ import type {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 async function getAuthHeaders(): Promise<HeadersInit> {
   const supabase = createClient();
   const {
@@ -35,7 +42,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error((err as { message?: string }).message ?? 'Request failed');
+    throw new ApiError(res.status, (err as { message?: string }).message ?? 'Request failed');
   }
   return res.json() as Promise<T>;
 }
