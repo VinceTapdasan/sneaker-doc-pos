@@ -1,11 +1,13 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Body,
   Param,
   Request,
   UseGuards,
+  NotFoundException,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -19,7 +21,14 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
-  async getMe(@Request() req: { user: { id: string; email?: string } }) {
+  async getMe(@Request() req: { user: { id: string } }) {
+    const user = await this.usersService.findById(req.user.id);
+    if (!user) throw new NotFoundException('User record not found');
+    return user;
+  }
+
+  @Post('provision')
+  async provision(@Request() req: { user: { id: string; email?: string } }) {
     return this.usersService.findOrCreate(req.user.id, req.user.email ?? '');
   }
 
