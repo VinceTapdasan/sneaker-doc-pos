@@ -21,18 +21,21 @@ export async function proxy(request: NextRequest) {
 
   const { data: { session } } = await supabase.auth.getSession();
 
+  // Always use the public app URL for server-side redirects (avoids localhost leaking behind proxy)
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
+
   // Root "/" — dashboard, requires session
   if (pathname === ROUTES.ROOT) {
-    if (!session) return NextResponse.redirect(new URL(ROUTES.LOGIN, request.url));
+    if (!session) return NextResponse.redirect(`${appUrl}${ROUTES.LOGIN}`);
     return response;
   }
 
   if (!session && PROTECTED_ROUTES.some((r) => pathname.startsWith(r))) {
-    return NextResponse.redirect(new URL(ROUTES.LOGIN, request.url));
+    return NextResponse.redirect(`${appUrl}${ROUTES.LOGIN}`);
   }
 
   if (session && AUTH_ROUTES.includes(pathname)) {
-    return NextResponse.redirect(new URL(ROUTES.ROOT, request.url));
+    return NextResponse.redirect(`${appUrl}${ROUTES.ROOT}`);
   }
 
   return response;

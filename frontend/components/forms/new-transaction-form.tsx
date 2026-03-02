@@ -416,7 +416,7 @@ export function NewTransactionForm() {
         data={pendingSubmitStable.current}
         services={services as Service[]}
         pendingPhotos={pendingPhotos}
-        selectedPromo={selectedPromo}
+        selectedPromo={selectedPromo ?? undefined}
         total={total}
         rawTotal={rawTotal}
         existingCustomer={existingCustomer}

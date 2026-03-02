@@ -3,8 +3,11 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
+
+  // Use the public app URL env var so it works correctly behind a reverse proxy
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
   if (code) {
     const cookieStore = await cookies();
@@ -27,11 +30,11 @@ export async function GET(request: Request) {
       await fetch(`${apiUrl}/users/provision`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${data.session.access_token}` },
-      }).catch(() => null); // non-fatal — user may already exist
+      }).catch(() => null);
 
-      return NextResponse.redirect(`${origin}/`);
+      return NextResponse.redirect(`${appUrl}/`);
     }
   }
 
-  return NextResponse.redirect(`${origin}/login?error=auth_failed`);
+  return NextResponse.redirect(`${appUrl}/login?error=auth_failed`);
 }

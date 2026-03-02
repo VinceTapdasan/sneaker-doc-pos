@@ -472,7 +472,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       <ItemStatusConfirmDialog
         open={pendingItemChange !== null}
         pendingChange={pendingItemChange}
-        customerName={txn.customerName}
+        customerName={txn.customerName ?? ''}
         loading={updateItemStatusMut.isPending}
         onConfirm={() => {
           if (!pendingItemChange) return;

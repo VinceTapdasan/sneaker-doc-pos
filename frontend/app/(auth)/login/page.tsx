@@ -6,9 +6,11 @@ import { createClient } from '@/lib/supabase/client';
 export default function LoginPage() {
   async function handleGoogleLogin() {
     const supabase = createClient();
+    // Use env var directly — avoids window.location.origin returning localhost behind a reverse proxy
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: { redirectTo: `${appUrl}/auth/callback` },
     });
   }
 
