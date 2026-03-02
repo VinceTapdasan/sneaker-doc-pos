@@ -39,6 +39,8 @@ interface TransactionItemColumnsOptions {
   onUploadClick?: (itemId: number, type: 'before' | 'after') => void;
   loadingItemIds?: Set<number>;
   uploadingItemIds?: Set<string>; // `${itemId}-${type}`
+  disableUploadBefore?: boolean;
+  txnBalance?: number;
 }
 
 const ITEM_STATUSES: ItemStatus[] = ['pending', 'in_progress', 'done', 'claimed', 'cancelled'];
@@ -73,9 +75,12 @@ function ImageCell({
     );
   }
   if (!url) {
+    if (!onUploadClick) {
+      return <span className="text-zinc-400 text-xs">—</span>;
+    }
     return (
       <button
-        onClick={(e) => { e.stopPropagation(); onUploadClick?.(); }}
+        onClick={(e) => { e.stopPropagation(); onUploadClick(); }}
         className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-dashed border-zinc-300 rounded-md hover:border-blue-400 hover:bg-blue-50 transition-colors group"
       >
         <CameraIcon size={13} className="text-zinc-400 group-hover:text-blue-500 transition-colors shrink-0" />
@@ -110,7 +115,7 @@ function ImageCell({
   );
 }
 
-export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onUploadClick, loadingItemIds, uploadingItemIds }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
+export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onUploadClick, loadingItemIds, uploadingItemIds, disableUploadBefore, txnBalance }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
   {
     accessorKey: 'shoeDescription',
     header: 'Shoe',
@@ -152,7 +157,7 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
         label="Before"
         uploading={uploadingItemIds?.has(`${row.original.id}-before`)}
         onImageClick={onImageClick}
-        onUploadClick={() => onUploadClick?.(row.original.id, 'before')}
+        onUploadClick={disableUploadBefore ? undefined : () => onUploadClick?.(row.original.id, 'before')}
       />
     ),
   },
@@ -184,20 +189,44 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
         return <StatusBadge status={row.original.status} />;
       }
 
+      const hasBalance = (txnBalance ?? 0) > 0;
+      const missingAfter = !row.original.afterImageUrl;
+
       return (
         <Select
           value={row.original.status}
-          onValueChange={(v) => onStatusChange(row.original.id, v as ItemStatus)}
+          onValueChange={(v) => {
+            if (v === 'claimed') {
+              if (missingAfter) { return; }
+              if (hasBalance) { return; }
+            }
+            onStatusChange(row.original.id, v as ItemStatus);
+          }}
         >
           <SelectTrigger className="h-auto border-0 bg-transparent shadow-none p-0 gap-1.5 focus-visible:ring-0 w-auto">
             <StatusBadge status={row.original.status} />
           </SelectTrigger>
           <SelectContent position="popper">
-            {ITEM_STATUSES.filter((s) => s !== 'cancelled').map((s) => (
-              <SelectItem key={s} value={s}>
-                <StatusBadge status={s} />
-              </SelectItem>
-            ))}
+            {ITEM_STATUSES.map((s) => {
+              const disableClaimed = s === 'claimed' && (missingAfter || hasBalance);
+              return (
+                <SelectItem
+                  key={s}
+                  value={s}
+                  disabled={disableClaimed}
+                  className={disableClaimed ? 'opacity-40 cursor-not-allowed' : ''}
+                  title={
+                    s === 'claimed' && missingAfter
+                      ? 'Upload after photo before claiming'
+                      : s === 'claimed' && hasBalance
+                        ? 'Settle balance before claiming'
+                        : undefined
+                  }
+                >
+                  <StatusBadge status={s} />
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       );

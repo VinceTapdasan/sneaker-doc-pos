@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { LockSimpleIcon, ReceiptIcon } from '@phosphor-icons/react';
+import { ReceiptIcon } from '@phosphor-icons/react';
 import { formatPeso, today } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,6 @@ import {
   useExpensesSummaryQuery,
   useDeleteExpenseMutation,
 } from '@/hooks/useExpensesQuery';
-import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import type { Expense } from '@/lib/types';
 
 export default function ExpensesPage() {
@@ -23,9 +22,6 @@ export default function ExpensesPage() {
   const [selectedDate, setSelectedDate] = useState(today());
   const [showForm, setShowForm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
-
-  const { data: currentUser, isSuccess: userLoaded } = useCurrentUserQuery();
-  const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
 
   useEffect(() => {
     if (searchParams.get('new') === '1') setShowForm(true);
@@ -39,20 +35,6 @@ export default function ExpensesPage() {
     () => createExpenseColumns({ onDelete: setDeleteTarget }),
     [],
   );
-
-  if (userLoaded && !isAdmin) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-64 gap-3 text-center">
-        <div className="w-12 h-12 rounded-full bg-zinc-100 flex items-center justify-center">
-          <LockSimpleIcon size={20} className="text-zinc-400" />
-        </div>
-        <div>
-          <p className="text-sm font-medium text-zinc-950">Access restricted</p>
-          <p className="text-xs text-zinc-400 mt-0.5">Expenses are only visible to admin users.</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div>

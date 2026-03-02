@@ -113,6 +113,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     [txn, uploadPhotoMut],
   );
 
+  const txnBalance = txn ? parseFloat(txn.total) - parseFloat(txn.paid) : 0;
+
   const itemColumns = useMemo(
     () => createTransactionItemColumns({
       onStatusChange: (itemId, status) => {
@@ -129,9 +131,11 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       onUploadClick: handleUploadClick,
       loadingItemIds,
       uploadingItemIds,
+      disableUploadBefore: true,
+      txnBalance,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loadingItemIds, uploadingItemIds, handleUploadClick],
+    [loadingItemIds, uploadingItemIds, handleUploadClick, txnBalance],
   );
   const addPaymentMut = useAddPaymentMutation(id, () => {
     setPaymentDialogOpen(false);
@@ -152,6 +156,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   if (!txn) return <p className="text-sm text-zinc-400">Transaction not found.</p>;
 
   const balance = parseFloat(txn.total) - parseFloat(txn.paid);
+  const refundAmount = balance < 0 ? Math.abs(balance) : 0;
   const txnLocked = ['cancelled', 'claimed'].includes(txn.status);
 
   return (
@@ -307,16 +312,27 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               </div>
             </div>
 
-            <Button
-              variant="dark"
-              size="sm"
-              className="w-full mt-4"
-              disabled={balance <= 0}
-              onClick={() => { setPaymentDialogOpen(true); setPaymentError(''); }}
-            >
-              <PlusIcon size={13} />
-              {balance <= 0 ? 'Fully Paid' : 'Add Payment'}
-            </Button>
+            {refundAmount > 0 ? (
+              <Button
+                variant="danger"
+                size="sm"
+                className="w-full mt-4"
+                onClick={() => setPaymentDialogOpen(true)}
+              >
+                Refund Payment · {formatPeso(refundAmount)}
+              </Button>
+            ) : (
+              <Button
+                variant="dark"
+                size="sm"
+                className="w-full mt-4"
+                disabled={balance <= 0}
+                onClick={() => { setPaymentDialogOpen(true); setPaymentError(''); }}
+              >
+                <PlusIcon size={13} />
+                {balance <= 0 ? 'Fully Paid' : 'Add Payment'}
+              </Button>
+            )}
           </div>
 
           <Dialog
@@ -327,66 +343,97 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             }}
           >
             <DialogContent className="bg-white sm:max-w-sm">
-              <DialogHeader>
-                <DialogTitle className="text-base">Record Payment</DialogTitle>
-                <DialogDescription className="text-xs text-zinc-400">
-                  #{txn.number} — Balance: <span className="font-mono font-medium text-amber-600">{formatPeso(balance)}</span>
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 pt-1">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-zinc-700">Method</label>
-                  <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
-                    <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAYMENT_METHOD_VALUES.map((m) => (
-                        <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-zinc-700">Amount (₱)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={paymentAmount}
-                    onChange={(e) => { setPaymentAmount(e.target.value); setPaymentError(''); }}
-                    className={cn(
-                      'w-full px-3 py-2 text-sm bg-white border rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500',
-                      paymentError ? 'border-red-400' : 'border-zinc-200',
-                    )}
-                    placeholder="0.00"
-                    autoFocus
-                  />
-                  {paymentError && (
-                    <p className="text-xs text-red-500">{paymentError}</p>
-                  )}
-                </div>
-                <Button
-                  size="sm"
-                  variant="dark"
-                  className="w-full"
-                  disabled={!paymentAmount || addPaymentMut.isPending}
-                  onClick={() => {
-                    const amt = parseFloat(paymentAmount);
-                    if (isNaN(amt) || amt <= 0) {
-                      setPaymentError('Enter a valid amount');
-                      return;
-                    }
-                    if (amt > balance) {
-                      setPaymentError(`Amount exceeds remaining balance of ${formatPeso(balance)}`);
-                      return;
-                    }
-                    addPaymentMut.mutate({ method: paymentMethod, amount: paymentAmount });
-                  }}
-                >
-                  {addPaymentMut.isPending ? <Spinner /> : 'Record Payment'}
-                </Button>
-              </div>
+              {refundAmount > 0 ? (
+                <>
+                  <DialogHeader>
+                    <DialogTitle className="text-base">Refund Payment</DialogTitle>
+                    <DialogDescription className="text-xs text-zinc-400">
+                      #{txn.number} — Refund to customer
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 pt-1">
+                    <div className="bg-red-50 border border-red-100 rounded-md p-3 text-center">
+                      <p className="text-xs text-red-600 mb-1">Refund amount</p>
+                      <p className="font-mono text-xl font-semibold text-red-700">{formatPeso(refundAmount)}</p>
+                      <p className="text-xs text-zinc-400 mt-1">Paid {formatPeso(txn.paid)} · New total {formatPeso(txn.total)}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      className="w-full"
+                      disabled={updateTxnMut.isPending}
+                      onClick={() => updateTxnMut.mutate({ paid: txn.total }, {
+                        onSuccess: () => setPaymentDialogOpen(false),
+                      })}
+                    >
+                      {updateTxnMut.isPending ? <Spinner /> : 'Confirm Refund'}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <DialogHeader>
+                    <DialogTitle className="text-base">Record Payment</DialogTitle>
+                    <DialogDescription className="text-xs text-zinc-400">
+                      #{txn.number} — Balance: <span className="font-mono font-medium text-amber-600">{formatPeso(balance)}</span>
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 pt-1">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium text-zinc-700">Method</label>
+                      <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
+                        <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PAYMENT_METHOD_VALUES.map((m) => (
+                            <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium text-zinc-700">Amount (₱)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={paymentAmount}
+                        onChange={(e) => { setPaymentAmount(e.target.value); setPaymentError(''); }}
+                        className={cn(
+                          'w-full px-3 py-2 text-sm bg-white border rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500',
+                          paymentError ? 'border-red-400' : 'border-zinc-200',
+                        )}
+                        placeholder="0.00"
+                        autoFocus
+                      />
+                      {paymentError && (
+                        <p className="text-xs text-red-500">{paymentError}</p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="dark"
+                      className="w-full"
+                      disabled={!paymentAmount || addPaymentMut.isPending}
+                      onClick={() => {
+                        const amt = parseFloat(paymentAmount);
+                        if (isNaN(amt) || amt <= 0) {
+                          setPaymentError('Enter a valid amount');
+                          return;
+                        }
+                        if (amt > balance) {
+                          setPaymentError(`Amount exceeds remaining balance of ${formatPeso(balance)}`);
+                          return;
+                        }
+                        addPaymentMut.mutate({ method: paymentMethod, amount: paymentAmount });
+                      }}
+                    >
+                      {addPaymentMut.isPending ? <Spinner /> : 'Record Payment'}
+                    </Button>
+                  </div>
+                </>
+              )}
             </DialogContent>
           </Dialog>
 

@@ -434,7 +434,7 @@ export class TransactionsService {
     return rows.map((r) => ({ ...r, amount: fromScaled(r.amount) }));
   }
 
-  // Auto-sync transaction status when items change (multi-item only)
+  // Auto-sync transaction status and total when items change
   private async syncTransactionStatus(transactionId: number): Promise<void> {
     const [txn] = await this.drizzle.db
       .select()
@@ -447,10 +447,46 @@ export class TransactionsService {
       .from(transactionItems)
       .where(eq(transactionItems.transactionId, transactionId));
 
-    if (items.length <= 1) return; // Only auto-sync multi-item transactions
-
     const nonCancelledItems = items.filter((i) => i.status !== 'cancelled');
-    if (nonCancelledItems.length === 0) return;
+    const cancelledItems = items.filter((i) => i.status === 'cancelled');
+
+    // All items cancelled → cancel the transaction
+    if (nonCancelledItems.length === 0) {
+      await this.drizzle.db
+        .update(transactions)
+        .set({ status: 'cancelled', updatedAt: new Date() })
+        .where(eq(transactions.id, transactionId));
+      return;
+    }
+
+    // Some items cancelled → recalculate total from non-cancelled item prices
+    if (cancelledItems.length > 0) {
+      const rawSubtotalScaled = nonCancelledItems.reduce(
+        (sum, i) => sum + (i.price ?? 0),
+        0,
+      );
+
+      let newTotalScaled = rawSubtotalScaled;
+
+      if (txn.promoId) {
+        const [promo] = await this.drizzle.db
+          .select()
+          .from(promos)
+          .where(eq(promos.id, txn.promoId));
+        if (promo) {
+          const discountFactor = 1 - parseFloat(promo.percent) / 100;
+          newTotalScaled = Math.round(rawSubtotalScaled * discountFactor);
+        }
+      }
+
+      await this.drizzle.db
+        .update(transactions)
+        .set({ total: newTotalScaled, updatedAt: new Date() })
+        .where(eq(transactions.id, transactionId));
+    }
+
+    // Multi-item status sync
+    if (items.length <= 1) return;
 
     const allClaimed = nonCancelledItems.every((i) => i.status === 'claimed');
     if (allClaimed && txn.status !== 'claimed') {

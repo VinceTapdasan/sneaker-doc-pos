@@ -104,7 +104,7 @@ export function useUpdateTransactionMutation(id: string) {
   const numericId = parseInt(id, 10);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { newPickupDate?: string | null; note?: string | null }) =>
+    mutationFn: (data: { newPickupDate?: string | null; note?: string | null; paid?: string }) =>
       api.transactions.update(numericId, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: transactionDetailKey(id) });

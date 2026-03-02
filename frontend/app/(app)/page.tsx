@@ -175,16 +175,6 @@ export default function DashboardPage() {
     return { count: txns.length, totalRevenue, totalPaid, totalBalance: totalRevenue - totalPaid };
   }, [dailyTxns]);
 
-  const todayByMethod = useMemo(() => {
-    return (todayCollections as TodayCollection[]).reduce(
-      (acc, c) => {
-        acc[c.method] = (acc[c.method] ?? 0) + parseFloat(c.amount);
-        return acc;
-      },
-      {} as Record<string, number>,
-    );
-  }, [todayCollections]);
-
   const todayCollectionTotal = todayCollections.reduce((sum, c) => sum + parseFloat(c.amount), 0);
   const totalExpenses = (expenses ?? []).reduce((sum, e) => sum + parseFloat(e.amount), 0);
 
@@ -343,106 +333,68 @@ export default function DashboardPage() {
         </>
       )}
 
-      {/* Staff: daily stat cards + today's payment method breakdown */}
+      {/* Staff: daily stat cards */}
       {!isAdmin && (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-            <StatCard
-              label="Transactions Today"
-              href="/transactions"
-              value={String(dailyStats.count)}
-              loading={dailyLoading}
-              icon={ReceiptIcon}
-              iconClass="text-zinc-500"
-              iconBg="bg-zinc-100"
-            />
-            <StatCard
-              label="Today's Revenue"
-              href="/transactions"
-              value={formatPeso(dailyStats.totalRevenue)}
-              mono
-              loading={dailyLoading}
-              icon={TrendUpIcon}
-              iconClass="text-emerald-600"
-              iconBg="bg-emerald-50"
-            />
-            <StatCard
-              label="Collected Today"
-              href="/transactions"
-              value={formatPeso(todayCollectionTotal)}
-              mono
-              loading={dailyLoading}
-              icon={WalletIcon}
-              iconClass="text-blue-600"
-              iconBg="bg-blue-50"
-            />
-            <StatCard
-              label="Outstanding"
-              href="/transactions"
-              value={formatPeso(dailyStats.totalBalance)}
-              mono
-              loading={dailyLoading}
-              icon={HourglassIcon}
-              iconClass="text-amber-600"
-              iconBg="bg-amber-50"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            {METHOD_ORDER.map((key) => {
-              const config = PAYMENT_METHOD_CONFIG[key];
-              const amount = todayByMethod[key] ?? 0;
-              return (
-                <div key={key} className="bg-white border border-zinc-200 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${config.iconBg}`}>
-                      <config.icon size={12} className={config.iconClass} />
-                    </div>
-                    <span className="text-xs text-zinc-400">{config.label}</span>
-                  </div>
-                  <p className="font-mono text-base font-semibold text-zinc-950">{formatPeso(amount)}</p>
-                </div>
-              );
-            })}
-          </div>
-        </>
+        <div className="grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-8">
+          <StatCard
+            label="Transactions Today"
+            href="/transactions"
+            value={String(dailyStats.count)}
+            loading={dailyLoading}
+            icon={ReceiptIcon}
+            iconClass="text-zinc-500"
+            iconBg="bg-zinc-100"
+          />
+          <StatCard
+            label="Collected Today"
+            href="/transactions"
+            value={formatPeso(todayCollectionTotal)}
+            mono
+            loading={dailyLoading}
+            icon={WalletIcon}
+            iconClass="text-blue-600"
+            iconBg="bg-blue-50"
+          />
+        </div>
       )}
 
-      {/* Today's collections list — all roles */}
-      <div className="bg-white border border-zinc-200 rounded-lg p-5 mb-6">
-        <h2 className="text-sm font-semibold text-zinc-950 mb-1 flex items-center gap-1.5">
-          <CoinIcon size={14} className="text-emerald-500" />
-          Today&apos;s Collections
-          {todayCollections.length > 0 && (
-            <span className="ml-auto text-xs font-mono font-medium text-emerald-600">
-              {formatPeso(todayCollectionTotal)}
-            </span>
+      {/* Today's collections list — admin only */}
+      {isAdmin && (
+        <div className="bg-white border border-zinc-200 rounded-lg p-5 mb-6">
+          <h2 className="text-sm font-semibold text-zinc-950 mb-1 flex items-center gap-1.5">
+            <CoinIcon size={14} className="text-emerald-500" />
+            Today&apos;s Collections
+            {todayCollections.length > 0 && (
+              <span className="ml-auto text-xs font-mono font-medium text-emerald-600">
+                {formatPeso(todayCollectionTotal)}
+              </span>
+            )}
+          </h2>
+          <p className="text-xs text-zinc-400 mb-3">Payments recorded today</p>
+          {todayCollections.length === 0 ? (
+            <p className="text-sm text-zinc-400">No collections recorded today.</p>
+          ) : (
+            <div className="divide-y divide-zinc-100">
+              {todayCollections.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/transactions/${c.transactionId}`}
+                  className="flex items-center justify-between py-2.5 hover:bg-zinc-50 -mx-1 px-1 rounded transition-colors duration-150"
+                >
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs font-medium text-zinc-950">#{c.txnNumber}</p>
+                    <p className="text-xs text-zinc-500 truncate">{toTitleCase(c.customerName) || '—'}</p>
+                  </div>
+                  <div className="text-right ml-3 shrink-0">
+                    <p className="font-mono text-xs font-medium text-emerald-600">{formatPeso(c.amount)}</p>
+                    <p className="text-xs text-zinc-400">{PAYMENT_METHOD_LABELS[c.method] ?? c.method}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
           )}
-        </h2>
-        <p className="text-xs text-zinc-400 mb-3">Payments recorded today</p>
-        {todayCollections.length === 0 ? (
-          <p className="text-sm text-zinc-400">No collections recorded today.</p>
-        ) : (
-          <div className="divide-y divide-zinc-100">
-            {todayCollections.map((c) => (
-              <Link
-                key={c.id}
-                href={`/transactions/${c.transactionId}`}
-                className="flex items-center justify-between py-2.5 hover:bg-zinc-50 -mx-1 px-1 rounded transition-colors duration-150"
-              >
-                <div className="min-w-0">
-                  <p className="font-mono text-xs font-medium text-zinc-950">#{c.txnNumber}</p>
-                  <p className="text-xs text-zinc-500 truncate">{toTitleCase(c.customerName) || '—'}</p>
-                </div>
-                <div className="text-right ml-3 shrink-0">
-                  <p className="font-mono text-xs font-medium text-emerald-600">{formatPeso(c.amount)}</p>
-                  <p className="text-xs text-zinc-400">{PAYMENT_METHOD_LABELS[c.method] ?? c.method}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Upcoming pickups + Recent transactions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">

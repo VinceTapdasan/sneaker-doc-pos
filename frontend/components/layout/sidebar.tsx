@@ -11,6 +11,7 @@ import {
   CurrencyDollarIcon,
   ChartBarIcon,
   ClockIcon,
+  CalendarIcon,
   SignOutIcon,
   ListIcon,
   XIcon,
@@ -59,6 +60,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Operations',
     items: [
       { href: ROUTES.TRANSACTIONS, label: 'Transactions', icon: ReceiptIcon, adminOnly: false, superadminOnly: false },
+      { href: ROUTES.UPCOMING_PICKUPS, label: 'Upcoming Pickups', icon: CalendarIcon, adminOnly: false, superadminOnly: false },
+      { href: ROUTES.EXPENSES, label: 'Expenses', icon: CurrencyDollarIcon, adminOnly: false, superadminOnly: false },
       { href: ROUTES.CUSTOMERS, label: 'Customers', icon: AddressBookIcon, adminOnly: true, superadminOnly: false },
     ],
   },
@@ -68,13 +71,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: ROUTES.SERVICES, label: 'Services', icon: WrenchIcon, adminOnly: true, superadminOnly: false },
       { href: ROUTES.PROMOS, label: 'Promos', icon: TagIcon, adminOnly: true, superadminOnly: false },
-    ],
-  },
-  {
-    label: 'Finance',
-    adminOnly: true,
-    items: [
-      { href: ROUTES.EXPENSES, label: 'Expenses', icon: CurrencyDollarIcon, adminOnly: true, superadminOnly: false },
     ],
   },
   {
