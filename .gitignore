@@ -16,4 +16,4 @@ node_modules/
 .DS_Store
 
 # local docs — not for commits
-ARCHITECTURE.md
+*.md
