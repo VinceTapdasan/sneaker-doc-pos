@@ -1,6 +1,8 @@
 import { createClient } from './supabase/client';
 import type {
   Transaction,
+  TransactionPhoto,
+  AssignableUser,
   Customer,
   Service,
   Promo,
@@ -84,6 +86,13 @@ export const api = {
       }),
     sendPickupReadySms: (id: number) =>
       apiFetch<{ phone: string }>(`/transactions/${id}/sms/pickup-ready`, { method: 'POST' }),
+    savePhoto: (id: number, body: { type: 'before' | 'after'; url: string }) =>
+      apiFetch<TransactionPhoto>(`/transactions/${id}/photos`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    deletePhoto: (txnId: number, photoId: number) =>
+      apiFetch<void>(`/transactions/${txnId}/photos/${photoId}`, { method: 'DELETE' }),
     deleted: () => apiFetch<Transaction[]>('/transactions/deleted'),
     restore: (id: number) => apiFetch<void>(`/transactions/${id}/restore`, { method: 'PATCH' }),
     delete: (id: number) => apiFetch<void>(`/transactions/${id}`, { method: 'DELETE' }),
@@ -146,6 +155,7 @@ export const api = {
         body: JSON.stringify({ branchId }),
       }),
     list: () => apiFetch<AppUser[]>('/users'),
+    listAssignable: () => apiFetch<AssignableUser[]>('/users/assignable'),
     updateRole: (id: string, userType: string) =>
       apiFetch<AppUser>(`/users/${id}/role`, {
         method: 'PATCH',
@@ -199,7 +209,7 @@ export const api = {
   },
 
   uploads: {
-    presignedUrl: (body: { txnId: number; itemId: number; type: 'before' | 'after'; extension: string }) =>
+    presignedUrl: (body: { txnId: number; itemId?: number; type: 'before' | 'after'; extension: string }) =>
       apiFetch<{ signedUrl: string; token: string; path: string; publicUrl: string }>('/uploads/presigned-url', {
         method: 'POST',
         body: JSON.stringify(body),

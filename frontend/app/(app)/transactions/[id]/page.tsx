@@ -36,7 +36,8 @@ import {
   useDeleteTransactionMutation,
 } from '@/hooks/useTransactionsQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
-import { useUploadPhotoMutation } from '@/hooks/useUploadPhoto';
+import { useUploadPhotoMutation, useUploadTxnPhotoMutation } from '@/hooks/useUploadPhoto';
+import { useAssignableUsersQuery } from '@/hooks/useUsersQuery';
 import { PAYMENT_METHOD_VALUES, TRANSACTION_STATUS } from '@/lib/constants';
 import { toPng } from 'html-to-image';
 import { toast } from 'sonner';
@@ -68,6 +69,11 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
   const [smsSending, setSmsSending] = useState(false);
+  const [smsConfirmed, setSmsConfirmed] = useState(false);
+
+  const txnPhotoFileRef = useRef<HTMLInputElement>(null);
+  const txnPhotoCameraRef = useRef<HTMLInputElement>(null);
+  const pendingPhotoTypeRef = useRef<'before' | 'after' | null>(null);
 
   const [rescheduleValue, setRescheduleValue] = useState('');
   const [noteValue, setNoteValue] = useState('');
@@ -75,12 +81,14 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
+  const { data: assignableUsers = [] } = useAssignableUsersQuery();
 
   const { data: txn, isLoading, isFetching } = useTransactionDetailQuery(id);
   const updateTxnMut = useUpdateTransactionMutation(id);
   const deleteTxnMut = useDeleteTransactionMutation(() => router.replace('/transactions'));
   const updateItemStatusMut = useUpdateItemStatusMutation(id);
   const uploadPhotoMut = useUploadPhotoMutation(id);
+  const uploadTxnPhotoMut = useUploadTxnPhotoMutation(id);
 
   const [loadingItemIds, setLoadingItemIds] = useState<Set<number>>(new Set());
   const [pendingItemChange, setPendingItemChange] = useState<PendingItemChange | null>(null);
@@ -150,9 +158,16 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     return claimable.length === 1 ? claimable[0].id : null;
   }, [txn?.items]);
 
-  async function handleSendPickupSms() {
+  function handleSendPickupSms() {
     if (!txn) return;
+    setSmsConfirmed(false);
+    setSmsSending(false);
     setSmsDialogOpen(true);
+  }
+
+  async function confirmSendSms() {
+    if (!txn) return;
+    setSmsConfirmed(true);
     setSmsSending(true);
     try {
       await api.transactions.sendPickupReadySms(txn.id);
@@ -163,7 +178,16 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       toast.error('Failed to send SMS. Please try again.');
     } finally {
       setSmsSending(false);
+      setSmsConfirmed(false);
     }
+  }
+
+  function handleTxnPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const type = pendingPhotoTypeRef.current;
+    if (!file || !type) return;
+    uploadTxnPhotoMut.mutate({ type, file });
+    e.target.value = '';
   }
 
   const itemColumns = useMemo(
@@ -354,6 +378,87 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               loadingRows={3}
               emptyTitle="No items"
             />
+          </div>
+
+          {/* Photo Dump */}
+          <div className="bg-white border border-zinc-200 rounded-lg p-5">
+            <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-4">
+              Photos
+            </h2>
+
+            {/* Hidden file inputs */}
+            <input
+              ref={txnPhotoFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleTxnPhotoFile}
+            />
+            <input
+              ref={txnPhotoCameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleTxnPhotoFile}
+            />
+
+            {(['before', 'after'] as const).map((photoType) => {
+              const photos = (txn.photos ?? []).filter((p) => p.type === photoType);
+              return (
+                <div key={photoType} className="mb-5 last:mb-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-zinc-700 capitalize">{photoType} Photos</p>
+                    {!txnLocked && (
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          disabled={uploadTxnPhotoMut.isPending}
+                          onClick={() => {
+                            pendingPhotoTypeRef.current = photoType;
+                            txnPhotoCameraRef.current?.click();
+                          }}
+                          className="px-2 py-1 text-[11px] font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded transition-colors duration-150 disabled:opacity-50"
+                        >
+                          Camera
+                        </button>
+                        <button
+                          type="button"
+                          disabled={uploadTxnPhotoMut.isPending}
+                          onClick={() => {
+                            pendingPhotoTypeRef.current = photoType;
+                            txnPhotoFileRef.current?.click();
+                          }}
+                          className="px-2 py-1 text-[11px] font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded transition-colors duration-150 disabled:opacity-50"
+                        >
+                          Upload
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {photos.length === 0 ? (
+                    <p className="text-xs text-zinc-400">No {photoType} photos yet.</p>
+                  ) : (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                      {photos.map((photo) => (
+                        <button
+                          key={photo.id}
+                          type="button"
+                          onClick={() => setLightbox({ src: photo.url, label: `${photoType} photo` })}
+                          className="aspect-square rounded-md overflow-hidden border border-zinc-200 hover:border-zinc-400 transition-colors duration-150"
+                        >
+                          <img
+                            src={photo.url}
+                            alt={`${photoType} photo`}
+                            className="w-full h-full object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -561,6 +666,34 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             </div>
           )}
 
+          {/* Assigned Staff */}
+          {isAdmin && (
+            <div className="bg-white border border-zinc-200 rounded-lg p-5">
+              <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
+                Assigned To
+              </h2>
+              <Select
+                value={txn.staffId ?? 'unassigned'}
+                onValueChange={(v) => {
+                  updateTxnMut.mutate({ staffId: v === 'unassigned' ? null : v });
+                }}
+                disabled={txnLocked || updateTxnMut.isPending}
+              >
+                <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {assignableUsers.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.nickname ?? u.fullName ?? u.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* QR Code */}
           <div className="bg-white border border-zinc-200 rounded-lg p-5">
             <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
@@ -587,13 +720,13 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             )}
           </div>
 
-          {/* SMS sending dialog */}
+          {/* SMS confirmation + sending dialog */}
           <Dialog open={smsDialogOpen} onOpenChange={(o) => { if (!smsSending) setSmsDialogOpen(o); }}>
             <DialogContent className="bg-white sm:max-w-xs">
               <div className="flex flex-col items-center gap-4 py-6 px-4 text-center">
                 <div
                   style={{
-                    animation: 'sms-plane 1.2s ease-in-out infinite',
+                    animation: smsSending ? 'sms-plane 1.2s ease-in-out infinite' : undefined,
                   }}
                 >
                   <PaperPlaneTiltIcon size={40} className="text-zinc-950" weight="fill" />
@@ -606,11 +739,33 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                   }
                 `}</style>
                 <div>
-                  <p className="text-sm font-medium text-zinc-950">Sending SMS</p>
+                  <p className="text-sm font-medium text-zinc-950">
+                    {smsSending ? 'Sending SMS' : 'Send SMS — Ready for Pickup'}
+                  </p>
                   <p className="text-xs text-zinc-400 mt-1">
                     Notifying {txn.customerName ?? 'customer'} that their shoes are ready for pickup.
                   </p>
                 </div>
+                {!smsSending && (
+                  <div className="flex gap-2 w-full">
+                    <button
+                      type="button"
+                      disabled={smsSending}
+                      onClick={() => setSmsDialogOpen(false)}
+                      className="flex-1 px-3 py-2 text-sm font-medium border border-zinc-200 text-zinc-700 rounded-md hover:bg-zinc-50 transition-colors duration-150 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={smsSending}
+                      onClick={confirmSendSms}
+                      className="flex-1 px-3 py-2 text-sm font-medium bg-zinc-950 text-white rounded-md hover:bg-zinc-800 transition-colors duration-150 disabled:opacity-50"
+                    >
+                      Yes, Send
+                    </button>
+                  </div>
+                )}
               </div>
             </DialogContent>
           </Dialog>

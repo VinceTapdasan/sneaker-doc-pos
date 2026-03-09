@@ -24,6 +24,51 @@ async function putToStorage(signedUrl: string, body: File, attempt = 1): Promise
   throw new Error(`Storage upload failed (${res.status}). Check your connection and try again.`);
 }
 
+// Transaction-level photo dump — before/after photos not tied to any specific item
+export function useUploadTxnPhotoMutation(txnId: string) {
+  const numericTxnId = parseInt(txnId, 10);
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      type,
+      file,
+    }: {
+      type: 'before' | 'after';
+      file: File;
+    }) => {
+      if (file.size === 0) throw new Error('File is empty. Try taking the photo again.');
+      if (!isValidImageType(file)) throw new Error('Only image files are allowed (JPEG, PNG, WebP, HEIC).');
+      if (file.size > RAW_MAX_SIZE_MB * 1024 * 1024) throw new Error(`File must be under ${RAW_MAX_SIZE_MB}MB.`);
+
+      const { blob, sizeKB, compressed } = await compressWithFallback(file);
+
+      const { signedUrl, publicUrl } = await api.uploads.presignedUrl({
+        txnId: numericTxnId,
+        type,
+        extension: 'jpg',
+      });
+
+      await putToStorage(signedUrl, blob);
+
+      try {
+        await api.transactions.savePhoto(numericTxnId, { type, url: publicUrl });
+      } catch {
+        throw new Error('Photo uploaded but failed to save. Please upload again to link it.');
+      }
+
+      return { sizeKB, compressed };
+    },
+    onSuccess: ({ sizeKB, compressed }) => {
+      void qc.invalidateQueries({ queryKey: transactionDetailKey(txnId) });
+      toast.success('Photo saved', {
+        description: compressed ? `Compressed to ${sizeKB}KB` : `${sizeKB}KB`,
+      });
+    },
+    onError: (err: Error) => toast.error('Upload failed', { description: err.message }),
+  });
+}
+
 export function useUploadPhotoMutation(txnId: string) {
   const numericTxnId = parseInt(txnId, 10);
   const qc = useQueryClient();

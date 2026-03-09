@@ -9,4 +9,5 @@ export class UpdateTransactionDto {
   total?: string;
   paid?: string;
   promoId?: number;
+  staffId?: string | null;
 }

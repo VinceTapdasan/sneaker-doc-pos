@@ -1,7 +1,7 @@
 'use client';
 
 import { type FieldErrors, type UseFormRegister } from 'react-hook-form';
-import { TrashIcon, XIcon } from '@phosphor-icons/react';
+import { TrashIcon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import type { Service } from '@/lib/types';
@@ -17,10 +17,8 @@ interface TransactionItemCardProps {
   addonServices: Service[];
   primaryServiceId: string;
   addonServiceIds: string[];
-  photo: PendingPhoto | undefined;
   canRemove: boolean;
   onRemove: () => void;
-  onRemovePhoto: () => void;
   onPrimaryServiceChange: (serviceId: string) => void;
   onAddonServiceChange: (addonIds: string[]) => void;
 }
@@ -33,10 +31,8 @@ export function TransactionItemCard({
   addonServices,
   primaryServiceId,
   addonServiceIds,
-  photo,
   canRemove,
   onRemove,
-  onRemovePhoto,
   onPrimaryServiceChange,
   onAddonServiceChange,
 }: TransactionItemCardProps) {
@@ -65,34 +61,8 @@ export function TransactionItemCard({
         </button>
       </div>
 
-      {/* Row 2: Photo + Services */}
+      {/* Row 2: Services */}
       <div className="flex gap-3 sm:gap-4">
-        {/* Photo slot */}
-        <div className="shrink-0 relative">
-          {photo ? (
-            <div className="relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={photo.previewUrl}
-                alt={`Shoe ${index + 1}`}
-                className="w-20 h-20 sm:w-28 sm:h-28 rounded-lg object-cover border border-zinc-200"
-              />
-              <button
-                type="button"
-                onClick={onRemovePhoto}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center rounded-full bg-zinc-800 text-white hover:bg-red-500 transition-colors"
-              >
-                <XIcon size={10} weight="bold" />
-              </button>
-            </div>
-          ) : (
-            <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-lg border-2 border-dashed border-zinc-200 bg-zinc-50 flex items-center justify-center">
-              <span className="text-[10px] text-zinc-400 text-center leading-tight px-1">No photo</span>
-            </div>
-          )}
-        </div>
-
-        {/* Services */}
         <div className="flex-1 min-w-0 space-y-2.5">
           {/* Primary Service */}
           <div>

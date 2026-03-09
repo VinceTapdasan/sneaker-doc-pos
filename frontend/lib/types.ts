@@ -80,6 +80,23 @@ export interface ClaimPayment {
   paidAt: string;
 }
 
+export interface TransactionPhoto {
+  id: number;
+  transactionId: number;
+  type: 'before' | 'after';
+  url: string;
+  createdAt: string;
+}
+
+export interface AssignableUser {
+  id: string;
+  nickname: string | null;
+  fullName: string | null;
+  email: string;
+  userType: string;
+  branchId: number | null;
+}
+
 export interface Transaction {
   id: number;
   number: string;
@@ -98,6 +115,7 @@ export interface Transaction {
   paid: string;
   promoId: number | null;
   branchId: number | null;
+  staffId?: string | null;
   createdAt: string;
   claimedAt: string | null;
   deletedAt: string | null;
@@ -112,6 +130,7 @@ export interface Transaction {
   promo?: Promo | null;
   items?: TransactionItem[];
   payments?: ClaimPayment[];
+  photos?: TransactionPhoto[];
 }
 
 export interface Expense {

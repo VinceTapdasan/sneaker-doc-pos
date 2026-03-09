@@ -26,6 +26,7 @@ import { CustomerLookupSection } from '@/components/transactions/CustomerLookupS
 import { TransactionItemCard, type PendingPhoto } from '@/components/transactions/TransactionItemCard';
 import { TransactionConfirmDialog } from '@/components/transactions/TransactionConfirmDialog';
 import { ClaimStubDialog } from '@/components/transactions/ClaimStubDialog';
+import { useAssignableUsersQuery } from '@/hooks/useUsersQuery';
 import type { Service, Promo, Customer, Transaction } from '@/lib/types';
 import { calcItemPrice, calcRawTotal, findPromo, applyPromo } from '@/utils/pricing';
 import { PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
@@ -33,11 +34,10 @@ import { ITEM_STATUS } from '@/lib/constants';
 
 const PAYMENT_METHODS = ['cash', 'gcash', 'card', 'bank_deposit'] as const;
 
-async function doPhotoUpload(txnId: number, itemId: number, file: File): Promise<void> {
+async function doPhotoUpload(txnId: number, file: File): Promise<void> {
   const { blob } = await compressWithFallback(file);
   const { signedUrl, publicUrl } = await api.uploads.presignedUrl({
     txnId,
-    itemId,
     type: 'before',
     extension: 'jpg',
   });
@@ -47,7 +47,7 @@ async function doPhotoUpload(txnId: number, itemId: number, file: File): Promise
     headers: { 'Content-Type': 'image/jpeg' },
   });
   if (!res.ok) throw new Error(`Upload failed (${res.status})`);
-  await api.transactions.updateItem(txnId, itemId, { beforeImageUrl: publicUrl });
+  await api.transactions.savePhoto(txnId, { type: 'before', url: publicUrl });
 }
 
 export function NewTransactionForm() {
@@ -101,6 +101,9 @@ export function NewTransactionForm() {
   const watchedPromoId = useWatch({ control, name: 'promoId' }) ?? 'none';
   const watchedPaymentMethod = useWatch({ control, name: 'paymentMethod' }) ?? '';
   const watchedPaymentAmount = useWatch({ control, name: 'paymentAmount' }) ?? '';
+  const watchedStaffId = useWatch({ control, name: 'staffId' }) ?? '';
+
+  const { data: assignableUsers = [] } = useAssignableUsersQuery();
 
   const [sameServiceToAll, setSameServiceToAll] = useState(false);
   const [customerStep, setCustomerStep] = useState<'phone' | 'details'>('phone');
@@ -144,26 +147,26 @@ export function NewTransactionForm() {
       return true;
     });
 
-    const newPhotos = valid.map((f) => ({ file: f, previewUrl: URL.createObjectURL(f) }));
-    setPendingPhotos((prev) => [...prev, ...newPhotos]);
+    if (valid.length === 0) return;
 
-    // Auto-add items to match photo count — outside setState to avoid StrictMode double-invoke
-    const updatedPhotoCount = pendingPhotos.length + newPhotos.length;
-    if (updatedPhotoCount > fields.length) {
-      const firstItem = watchedItems?.[0];
-      const inheritedServices = sameServiceToAll && firstItem
-        ? { primaryServiceId: firstItem.primaryServiceId ?? '', addonServiceIds: firstItem.addonServiceIds ?? [] }
-        : { primaryServiceId: '', addonServiceIds: [] };
-      for (let i = fields.length; i < updatedPhotoCount; i++) {
-        append({ shoeDescription: '', ...inheritedServices });
+    const newPhotos = valid.map((f) => ({ file: f, previewUrl: URL.createObjectURL(f) }));
+    const nextTotalPhotos = pendingPhotos.length + newPhotos.length;
+
+    // Auto-append blank items so item count matches photo count
+    if (nextTotalPhotos > fields.length) {
+      const toAdd = nextTotalPhotos - fields.length;
+      for (let i = 0; i < toAdd; i++) {
+        append({ shoeDescription: '', primaryServiceId: '', addonServiceIds: [] });
       }
     }
+
+    setPendingPhotos((prev) => [...prev, ...newPhotos]);
   }
 
   function handleRemovePhoto(idx: number) {
     URL.revokeObjectURL(pendingPhotosRef.current[idx].previewUrl);
     setPendingPhotos((prev) => prev.filter((_, i) => i !== idx));
-    if (fields.length > 1) {
+    if (idx < fields.length) {
       remove(idx);
     }
   }
@@ -221,37 +224,36 @@ export function NewTransactionForm() {
         pickupDate: data.pickupDate || undefined,
         note: data.note || undefined,
         promoId: data.promoId && data.promoId !== 'none' ? parseInt(data.promoId, 10) : undefined,
+        staffId: data.staffId || undefined,
         total: total.toFixed(2),
         paid: '0',
         items: allItems,
       });
     },
-    onSuccess: async (txn, data) => {
-      const items = txn.items ?? [];
+    onSuccess: async (txn) => {
       const photos = pendingPhotosRef.current;
 
-      if (photos.length > 0 && items.length > 0) {
+      if (photos.length > 0) {
         setIsUploadingPhotos(true);
         await Promise.allSettled(
-          items.map((item, idx) => {
-            const photo = photos[idx];
-            if (!photo) return Promise.resolve();
-            return doPhotoUpload(txn.id, item.id, photo.file).catch(() => {
-              toast.error(`Photo upload failed for "${item.shoeDescription || `Shoe ${idx + 1}`}"`);
-            });
-          }),
+          photos.map((photo, idx) =>
+            doPhotoUpload(txn.id, photo.file).catch(() => {
+              toast.error(`Photo ${idx + 1} upload failed`);
+            }),
+          ),
         );
         setIsUploadingPhotos(false);
       }
 
       // Record initial payment if provided
-      const payAmt = parseFloat(data.paymentAmount ?? '0');
+      const formData = pendingSubmitStable.current;
+      const payAmt = parseFloat(formData?.paymentAmount ?? '0');
       let paidSoFar = 0;
-      if (payAmt > 0 && data.paymentMethod) {
+      if (payAmt > 0 && formData?.paymentMethod) {
         await api.transactions.addPayment(txn.id, {
-          method: data.paymentMethod,
+          method: formData.paymentMethod,
           amount: payAmt.toFixed(2),
-          ...(data.paymentReference?.trim() ? { referenceNumber: data.paymentReference.trim() } : {}),
+          ...(formData.paymentReference?.trim() ? { referenceNumber: formData.paymentReference.trim() } : {}),
         }).then(() => {
           paidSoFar = payAmt;
         }).catch(() => {
@@ -344,30 +346,56 @@ export function NewTransactionForm() {
                 </label>
               </div>
 
-              {/* Before photos — batch multi-upload */}
-              <div className="mb-2">
-                <span className="text-xs font-medium text-zinc-500 block mb-1.5">Before Photos</span>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCameraClick}
-                    className="flex items-center justify-center gap-2 flex-1 px-3 py-2.5 bg-white border border-dashed border-zinc-300 rounded-md hover:border-blue-400 hover:bg-blue-50 transition-colors group"
-                  >
-                    <CameraIcon size={15} className="text-zinc-400 group-hover:text-blue-500 transition-colors shrink-0" />
-                    <span className="text-xs font-medium text-zinc-500 group-hover:text-blue-600 transition-colors">
-                      Take Photo
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handlePhotoClick}
-                    className="flex items-center justify-center gap-2 flex-1 px-3 py-2.5 bg-white border border-dashed border-zinc-300 rounded-md hover:border-blue-400 hover:bg-blue-50 transition-colors group"
-                  >
-                    <span className="text-xs font-medium text-zinc-500 group-hover:text-blue-600 transition-colors">
-                      {pendingPhotos.length > 0 ? '+ Add More' : 'Upload'}
-                    </span>
-                  </button>
+              {/* Before photos — transaction-level photo dump */}
+              <div className="mb-4 pb-4 border-b border-zinc-100">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-zinc-500">
+                    Before Photos
+                    {pendingPhotos.length > 0 && (
+                      <span className="ml-1.5 text-zinc-400">({pendingPhotos.length})</span>
+                    )}
+                  </span>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleCameraClick}
+                      className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded transition-colors duration-150"
+                    >
+                      <CameraIcon size={11} />
+                      Camera
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePhotoClick}
+                      className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded transition-colors duration-150"
+                    >
+                      Upload
+                    </button>
+                  </div>
                 </div>
+                {pendingPhotos.length === 0 ? (
+                  <p className="text-xs text-zinc-400">No photos yet — add a group shot of all shoes.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {pendingPhotos.map((photo, idx) => (
+                      <div key={idx} className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={photo.previewUrl}
+                          alt={`Photo ${idx + 1}`}
+                          className="w-16 h-16 rounded-md object-cover border border-zinc-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePhoto(idx)}
+                          className="absolute -top-1.5 -right-1.5 w-4 h-4 flex items-center justify-center rounded-full bg-zinc-800 text-white hover:bg-red-500 transition-colors"
+                        >
+                          <XIcon size={8} weight="bold" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {errors.items?.root && (
@@ -386,10 +414,8 @@ export function NewTransactionForm() {
                     addonServices={addonServices}
                     primaryServiceId={watchedItems?.[idx]?.primaryServiceId ?? ''}
                     addonServiceIds={watchedItems?.[idx]?.addonServiceIds ?? []}
-                    photo={pendingPhotos[idx]}
                     canRemove={fields.length > 1}
                     onRemove={() => handleRemoveItem(idx)}
-                    onRemovePhoto={() => handleRemovePhoto(idx)}
                     onPrimaryServiceChange={(id) => handlePrimaryServiceChange(idx, id)}
                     onAddonServiceChange={(ids) => handleAddonServiceChange(idx, ids)}
                   />
@@ -516,6 +542,28 @@ export function NewTransactionForm() {
                 )}
               </div>
             </div>
+
+            {assignableUsers.length > 0 && (
+              <div className="bg-white border border-zinc-200 rounded-lg p-5">
+                <h2 className="text-sm font-semibold text-zinc-950 mb-3">Assign To</h2>
+                <Select
+                  value={watchedStaffId || 'none'}
+                  onValueChange={(v) => setValue('staffId', v === 'none' ? '' : v)}
+                >
+                  <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
+                    <SelectValue placeholder="Self (default)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Self (default)</SelectItem>
+                    {assignableUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.nickname ?? u.fullName ?? u.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="bg-white border border-zinc-200 rounded-lg p-5">
               <h2 className="text-sm font-semibold text-zinc-950 mb-3">Summary</h2>

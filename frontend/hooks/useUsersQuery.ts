@@ -6,12 +6,21 @@ import { api } from '@/lib/api';
 import type { AppUser } from '@/lib/types';
 
 const USERS_KEY = ['users'];
+const ASSIGNABLE_KEY = ['users', 'assignable'];
 const docsKey = (id: string) => ['users', id, 'documents'];
 
 export function useUsersQuery() {
   return useQuery({
     queryKey: USERS_KEY,
     queryFn: () => api.users.list(),
+  });
+}
+
+export function useAssignableUsersQuery() {
+  return useQuery({
+    queryKey: ASSIGNABLE_KEY,
+    queryFn: () => api.users.listAssignable(),
+    staleTime: 5 * 60 * 1000, // 5 min — user list rarely changes
   });
 }
 

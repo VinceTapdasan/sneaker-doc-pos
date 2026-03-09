@@ -24,5 +24,6 @@ export class CreateTransactionDto {
   total?: string;
   paid?: string;
   promoId?: number;
+  staffId?: string;
   items?: CreateTransactionItemDto[];
 }

@@ -224,7 +224,7 @@ export function ReportPdf({ data, year, month, branchName, logoUrl }: Props) {
                 { key: 'cash',         label: 'Cash' },
                 { key: 'gcash',        label: 'GCash' },
                 { key: 'card',         label: 'Card' },
-                { key: 'bank_deposit', label: 'Bank Transfer' },
+                { key: 'bank_deposit', label: 'Bank Deposit' },
               ].map(({ key, label }) => (
                 <View key={key} style={s.tRow}>
                   <Text style={[s.td, s.wFlex3]}>{label}</Text>

@@ -161,6 +161,36 @@ Monthly deposit tracking per payment method (GCash, Cash, Card, Bank Deposit).
 - Dashboard collection channel strip — each method card has `+ Add` button that opens deposit input dialog
 - `frontend/hooks/useDepositsQuery.ts` — `useDepositsQuery(year, month, branchId)` + `useUpsertDepositMutation`
 
+## Staff Management
+
+Admins can view, edit profiles, manage documents, change roles, and deactivate staff — all from `/users`.
+
+**Edit Profile dialog** (`components/users/EditStaffDialog.tsx`):
+- Fields: Full Name, Nickname, Contact Number, Birthday, Address, Emergency Contact Name + Number
+- `PATCH /users/:id/profile` — admin/superadmin only
+
+**Documents dialog** (`components/users/StaffDocumentsDialog.tsx`):
+- Uploads files (images, PDF, DOC) directly to Supabase Storage bucket: `staff-documents`
+- Path pattern: `{userId}/{timestamp}.{ext}`
+- After upload, saves public URL + label to `staff_documents` table via `POST /users/:id/documents`
+- Delete removes the DB record (`DELETE /users/:id/documents/:docId`) — storage file is orphaned (acceptable)
+- `GET /users/:id/documents` — fetch all docs for a staff member
+
+**Required**: Create a **public** `staff-documents` bucket in Supabase Storage dashboard.
+
+**Backend endpoints** (`users.controller.ts`):
+- `GET /users/:id` — fetch single user (admin+)
+- `PATCH /users/:id/profile` — update profile fields (admin+)
+- `GET /users/:id/documents` — list documents (admin+)
+- `POST /users/:id/documents` — add document record (admin+)
+- `DELETE /users/:id/documents/:docId` — remove document record (admin+)
+
+## Creator Tracking (`createdById`)
+
+All major entities now track who created them:
+- `transactions` / `expenses` — use `staffId` (existing)
+- `services`, `promos`, `branches` — new `created_by_id` UUID FK → `users.id` (added in migration 0015)
+
 ## QR Scanner
 
 `frontend/components/ui/qr-scan-dialog.tsx` — dialog that scans a claim stub QR code and navigates to the transaction.
@@ -220,3 +250,5 @@ Photos (before/after images per transaction item) use a **presigned URL pattern*
 - **Photo upload — never skip compression**: bypassing `imageCompression` for "small" files uploads non-JPEG bytes with a JPEG Content-Type header, corrupting the image. Always run the compression step.
 - **Photo upload — bucket must be public**: private buckets require signed read URLs that expire. The current implementation stores permanent `publicUrl` values in the DB and displays them directly. If the bucket is private, images will 403 after the signed URL expires.
 - **`SUPABASE_STORAGE_BUCKET` missing**: the presigned-url endpoint will throw at runtime if this env var is not set in `backend/.env`.
+- **`staff-documents` bucket must be public**: the `StaffDocumentsDialog` uses `getPublicUrl()` and stores permanent URLs. If the bucket is private, document links will 403. Create it as public in Supabase Storage dashboard.
+- **drizzle-kit generate is interactive**: `pnpm drizzle-kit generate` may prompt interactively for rename detection. Write manual SQL migrations and register them in `migrations/meta/_journal.json` instead. Run `pnpm drizzle-kit migrate` to apply.

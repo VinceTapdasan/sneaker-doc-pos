@@ -177,6 +177,7 @@ export const deposits = pgTable('deposits', {
   month: integer('month').notNull(), // 1-12; 0 = annual (unused in practice)
   method: varchar('method', { length: 50 }).notNull(), // cash | gcash | card | bank_deposit
   amount: bigint('amount', { mode: 'number' }).default(0).notNull(),
+  origin: varchar('origin', { length: 50 }).default('gcash'), // source of bank_deposit funds
   branchId: integer('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -225,6 +226,21 @@ export const auditLog = pgTable('audit_log', {
 });
 
 // ---------------------------------------------------------------------------
+// transaction_photos (transaction-level photo dump — before/after)
+// ---------------------------------------------------------------------------
+export const transactionPhotos = pgTable('transaction_photos', {
+  id: serial('id').primaryKey(),
+  transactionId: integer('transaction_id')
+    .references(() => transactions.id, { onDelete: 'cascade' })
+    .notNull(),
+  type: varchar('type', { length: 20 }).notNull(), // 'before' | 'after'
+  url: text('url').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // staff_documents
 // ---------------------------------------------------------------------------
 export const staffDocuments = pgTable('staff_documents', {
@@ -251,8 +267,16 @@ export const transactionsRelations = relations(
     }),
     items: many(transactionItems),
     payments: many(claimPayments),
+    photos: many(transactionPhotos),
   }),
 );
+
+export const transactionPhotosRelations = relations(transactionPhotos, ({ one }) => ({
+  transaction: one(transactions, {
+    fields: [transactionPhotos.transactionId],
+    references: [transactions.id],
+  }),
+}));
 
 export const transactionItemsRelations = relations(
   transactionItems,

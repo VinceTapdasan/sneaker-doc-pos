@@ -68,7 +68,7 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: 'Cash',
   gcash: 'GCash',
   card: 'Card',
-  bank_deposit: 'Bank Transfer',
+  bank_deposit: 'Bank Deposit',
 };
 
 export function statusLabel(status: string): string {

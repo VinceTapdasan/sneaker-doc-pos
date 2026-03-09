@@ -15,17 +15,25 @@ export class UploadsService {
   ) {}
 
   async createPresignedUrl(dto: PresignedUrlDto) {
-    const [item] = await this.db.db
-      .select({ id: transactionItems.id })
-      .from(transactionItems)
-      .where(eq(transactionItems.id, dto.itemId))
-      .limit(1);
-
-    if (!item) throw new NotFoundException('Item not found');
-
     const bucket = this.config.getOrThrow<string>('SUPABASE_STORAGE_BUCKET');
     const ext = dto.extension.toLowerCase().replace(/^\./, '');
-    const path = `sneakers/${dto.txnId}/${dto.itemId}/${dto.type}/${Date.now()}.${ext}`;
+
+    let path: string;
+
+    if (dto.itemId != null) {
+      // Legacy: per-item photo
+      const [item] = await this.db.db
+        .select({ id: transactionItems.id })
+        .from(transactionItems)
+        .where(eq(transactionItems.id, dto.itemId))
+        .limit(1);
+
+      if (!item) throw new NotFoundException('Item not found');
+      path = `sneakers/${dto.txnId}/${dto.itemId}/${dto.type}/${Date.now()}.${ext}`;
+    } else {
+      // Transaction-level photo dump
+      path = `txn-photos/${dto.txnId}/${dto.type}/${Date.now()}.${ext}`;
+    }
 
     const { data, error } = await this.supabase.db.storage
       .from(bucket)

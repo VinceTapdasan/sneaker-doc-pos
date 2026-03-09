@@ -53,6 +53,11 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
+  @Get('assignable')
+  findAssignable() {
+    return this.usersService.findAssignable();
+  }
+
   @Get(':id')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')

@@ -22,6 +22,7 @@ import { DrizzleService } from '../db/drizzle.service';
 import {
   transactions,
   transactionItems,
+  transactionPhotos,
   claimPayments,
   customers,
   promos,
@@ -41,6 +42,7 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
+import { AddPhotoDto } from './dto/add-photo.dto';
 import { toScaled, fromScaled } from '../utils/money';
 
 export interface FindAllParams {
@@ -165,6 +167,13 @@ export class TransactionsService {
       .from(claimPayments)
       .where(eq(claimPayments.transactionId, id));
 
+    const photos = await this.drizzle.db
+      .select()
+      .from(transactionPhotos)
+      .where(eq(transactionPhotos.transactionId, id))
+      .orderBy(transactionPhotos.createdAt)
+      .catch(() => []); // graceful fallback if migration hasn't run yet
+
     // Fetch customer address if phone is available
     let customerAddress: {
       streetName: string | null;
@@ -196,12 +205,14 @@ export class TransactionsService {
       customerCity: customerAddress?.city ?? null,
       customerProvince: customerAddress?.province ?? null,
       staffNickname: row.staff?.nickname ?? null,
+      staffId: row.txn.staffId ?? null,
       branchName: row.branch?.name ?? null,
       branchStreetName: row.branch?.streetName ?? null,
       branchBarangay: row.branch?.barangay ?? null,
       branchCity: row.branch?.city ?? null,
       branchProvince: row.branch?.province ?? null,
       branchPhone: row.branch?.phone ?? null,
+      photos,
     };
   }
 
@@ -247,7 +258,7 @@ export class TransactionsService {
         paid: toScaled(dto.paid ?? '0'),
         promoId: dto.promoId ?? null,
         branchId: branchId ?? null,
-        staffId: performedBy ?? null,
+        staffId: dto.staffId ?? performedBy ?? null,
         updatedAt: new Date(),
       })
       .returning();
@@ -404,6 +415,23 @@ export class TransactionsService {
       branchId: branchId ?? undefined,
       details: auditDetails,
     });
+
+    // Auto-fire SMS when pickup is rescheduled and customer has a phone number
+    if (
+      dto.newPickupDate !== undefined &&
+      dto.newPickupDate !== existing.newPickupDate &&
+      updated.customerPhone
+    ) {
+      this.sms.sendScheduleChangedSms({
+        customerPhone: updated.customerPhone,
+        customerName: updated.customerName,
+        number: updated.number,
+        newPickupDate: dto.newPickupDate,
+      }).catch((err) => {
+        // Fire-and-forget — don't fail the update if SMS fails
+        console.error('Failed to send reschedule SMS:', err);
+      });
+    }
 
     return this.findOne(id);
   }
@@ -734,6 +762,20 @@ export class TransactionsService {
     await this.sms.send({ to: txn.customerPhone, message });
 
     return { phone: txn.customerPhone };
+  }
+
+  async addPhoto(id: number, dto: AddPhotoDto) {
+    const [photo] = await this.drizzle.db
+      .insert(transactionPhotos)
+      .values({ transactionId: id, type: dto.type, url: dto.url })
+      .returning();
+    return photo;
+  }
+
+  async removePhoto(txnId: number, photoId: number) {
+    await this.drizzle.db
+      .delete(transactionPhotos)
+      .where(and(eq(transactionPhotos.id, photoId), eq(transactionPhotos.transactionId, txnId)));
   }
 
   async remove(id: number, performedBy?: string) {

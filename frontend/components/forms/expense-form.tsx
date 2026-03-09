@@ -16,7 +16,7 @@ const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
   { value: 'gcash', label: 'GCash' },
   { value: 'card', label: 'Card' },
-  { value: 'bank_deposit', label: 'Bank Transfer' },
+  { value: 'bank_deposit', label: 'Bank Deposit' },
 ] as const;
 
 const schema = z.object({

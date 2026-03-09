@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { asc, eq, and } from 'drizzle-orm';
+import { asc, eq, and, ne } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import { AuditService } from '../audit/audit.service';
 import { users, staffDocuments } from '../db/schema';
@@ -58,6 +58,22 @@ export class UsersService {
       .from(users)
       .where(eq(users.isActive, true))
       .orderBy(asc(users.createdAt));
+  }
+
+  // Returns active non-superadmin users for transaction assignment dropdowns
+  async findAssignable() {
+    return this.drizzle.db
+      .select({
+        id: users.id,
+        nickname: users.nickname,
+        fullName: users.fullName,
+        email: users.email,
+        userType: users.userType,
+        branchId: users.branchId,
+      })
+      .from(users)
+      .where(and(eq(users.isActive, true), ne(users.userType, 'superadmin')))
+      .orderBy(asc(users.nickname));
   }
 
   async remove(id: string, performedBy?: string) {

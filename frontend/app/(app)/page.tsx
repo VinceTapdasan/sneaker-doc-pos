@@ -73,7 +73,7 @@ const PAYMENT_METHOD_CONFIG: Record<string, {
   iconBg: string;
 }> = {
   gcash: { label: 'GCash', icon: DeviceMobileIcon, iconClass: 'text-blue-600', iconBg: 'bg-blue-50' },
-  bank_deposit: { label: 'Bank Transfer', icon: BankIcon, iconClass: 'text-amber-600', iconBg: 'bg-amber-50' },
+  bank_deposit: { label: 'Bank Deposit', icon: BankIcon, iconClass: 'text-amber-600', iconBg: 'bg-amber-50' },
   cash: { label: 'Cash', icon: MoneyIcon, iconClass: 'text-emerald-600', iconBg: 'bg-emerald-50' },
   card: { label: 'Card', icon: CreditCardIcon, iconClass: 'text-violet-600', iconBg: 'bg-violet-50' },
 };
@@ -372,17 +372,19 @@ export default function DashboardPage() {
                         <config.icon size={13} className={config.iconClass} />
                         <span className="text-xs font-medium text-zinc-500">{config.label}</span>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDepositDialog(key);
-                          setDepositAmount('');
-                          setDepositError('');
-                        }}
-                        className="flex items-center px-2.5 py-1.5 -mr-2 text-[11px] font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors duration-150"
-                      >
-                        + Add
-                      </button>
+                      {key === 'bank_deposit' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDepositDialog(key);
+                            setDepositAmount('');
+                            setDepositError('');
+                          }}
+                          className="flex items-center px-2.5 py-1.5 -mr-2 text-[11px] font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors duration-150"
+                        >
+                          + Add
+                        </button>
+                      )}
                     </div>
                     {depositsLoading ? (
                       <div className="h-5 w-16 bg-zinc-100 rounded animate-pulse" />
@@ -544,12 +546,17 @@ export default function DashboardPage() {
       >
         <DialogContent className="bg-white sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-base">Record Deposit</DialogTitle>
+            <DialogTitle className="text-base">Record Bank Deposit</DialogTitle>
             <DialogDescription className="text-xs text-zinc-400">
-              {depositDialog ? PAYMENT_METHOD_CONFIG[depositDialog]?.label : ''} · {month === 0 ? `${year} Overall` : `${MONTHS[(month || 1) - 1]} ${year}`}
+              {month === 0 ? `${year} Overall` : `${MONTHS[(month || 1) - 1]} ${year}`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 pt-1">
+            <div className="rounded-md bg-amber-50 border border-amber-100 px-3 py-2">
+              <p className="text-xs text-amber-700">
+                Recording a bank deposit will subtract the same amount from the GCash balance — this reflects a GCash → bank transfer.
+              </p>
+            </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-zinc-700">Amount (₱)</label>
               <input
@@ -564,9 +571,15 @@ export default function DashboardPage() {
               />
               {depositError && <p className="text-xs text-red-500">{depositError}</p>}
             </div>
-            {depositDialog && depositsData && parseFloat(depositsData[depositDialog] ?? '0') > 0 && (
+            {depositsData && parseFloat(depositsData['gcash'] ?? '0') > 0 && (
               <p className="text-xs text-zinc-400">
-                Current total: <span className="font-mono">{formatPeso(depositsData[depositDialog])}</span>
+                GCash balance: <span className="font-mono">{formatPeso(depositsData['gcash'])}</span>
+                {' '}— will be reduced by this amount.
+              </p>
+            )}
+            {depositsData && parseFloat(depositsData['bank_deposit'] ?? '0') > 0 && (
+              <p className="text-xs text-zinc-400">
+                Current bank deposit total: <span className="font-mono">{formatPeso(depositsData['bank_deposit'])}</span>
                 {' '}— this amount will be added to it.
               </p>
             )}

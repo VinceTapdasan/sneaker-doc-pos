@@ -33,9 +33,14 @@ export class DepositsService {
     return result;
   }
 
-  async upsert(year: number, month: number, method: string, amount: string, branchId?: number, performedBy?: string) {
-    const addScaled = toScaled(amount);
-
+  private async upsertSingle(
+    year: number,
+    month: number,
+    method: string,
+    deltaScaled: number,
+    branchId?: number,
+    origin?: string,
+  ) {
     const existing = await this.drizzle.db
       .select()
       .from(deposits)
@@ -48,22 +53,31 @@ export class DepositsService {
         ),
       );
 
-    let result: { id: number; amount: number; method: string };
-
     if (existing.length > 0) {
-      const newTotal = existing[0].amount + addScaled;
+      const newTotal = existing[0].amount + deltaScaled;
       const [updated] = await this.drizzle.db
         .update(deposits)
         .set({ amount: newTotal, updatedAt: new Date() })
         .where(eq(deposits.id, existing[0].id))
         .returning();
-      result = updated;
+      return updated;
     } else {
       const [created] = await this.drizzle.db
         .insert(deposits)
-        .values({ year, month, method, amount: addScaled, branchId: branchId ?? null })
+        .values({ year, month, method, amount: Math.max(0, deltaScaled), branchId: branchId ?? null, origin: origin ?? null })
         .returning();
-      result = created;
+      return created;
+    }
+  }
+
+  async upsert(year: number, month: number, method: string, amount: string, branchId?: number, performedBy?: string) {
+    const addScaled = toScaled(amount);
+
+    const result = await this.upsertSingle(year, month, method, addScaled, branchId, method === 'bank_deposit' ? 'gcash' : undefined);
+
+    // When recording a bank deposit, subtract the same amount from GCash (owner transferred GCash funds to bank)
+    if (method === 'bank_deposit') {
+      await this.upsertSingle(year, month, 'gcash', -addScaled, branchId);
     }
 
     await this.audit.log({
@@ -72,7 +86,7 @@ export class DepositsService {
       entityId: String(result.id),
       performedBy,
       branchId,
-      details: { year, month, method, added: fromScaled(addScaled), total: fromScaled(result.amount) },
+      details: { year, month, method, added: fromScaled(addScaled), total: fromScaled(result.amount), ...(method === 'bank_deposit' ? { origin: 'gcash', gcashSubtracted: fromScaled(addScaled) } : {}) },
     });
 
     return { ...result, amount: fromScaled(result.amount) };

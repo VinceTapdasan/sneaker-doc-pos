@@ -27,6 +27,7 @@ export const transactionSchema = z.object({
   paymentMethod: z.string().optional(),
   paymentAmount: z.string().optional(),
   paymentReference: z.string().optional(),
+  staffId: z.string().optional(),
   items: z.array(itemSchema).min(1, 'Add at least one item'),
 });
 

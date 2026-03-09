@@ -178,7 +178,7 @@ export default function ReportsPage() {
                         { key: 'cash', label: 'Cash' },
                         { key: 'gcash', label: 'GCash' },
                         { key: 'card', label: 'Card' },
-                        { key: 'bank_deposit', label: 'Bank Transfer' },
+                        { key: 'bank_deposit', label: 'Bank Deposit' },
                       ].map(({ key, label }) => (
                         <tr key={key}>
                           <td className="px-4 py-2.5 text-zinc-700">{label}</td>

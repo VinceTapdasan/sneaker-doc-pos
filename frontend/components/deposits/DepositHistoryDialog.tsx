@@ -16,7 +16,7 @@ const TABS = [
   { value: '', label: 'All' },
   { value: 'cash', label: 'Cash' },
   { value: 'gcash', label: 'GCash' },
-  { value: 'bank_deposit', label: 'Bank Transfer' },
+  { value: 'bank_deposit', label: 'Bank Deposit' },
   { value: 'card', label: 'Card' },
 ];
 

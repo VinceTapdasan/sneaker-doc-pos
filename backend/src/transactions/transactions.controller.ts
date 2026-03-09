@@ -21,6 +21,7 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
+import { AddPhotoDto } from './dto/add-photo.dto';
 
 @Controller('transactions')
 export class TransactionsController {
@@ -153,6 +154,24 @@ export class TransactionsController {
   @Post(':id/sms/pickup-ready')
   sendPickupReadySms(@Param('id', ParseIntPipe) id: number) {
     return this.transactionsService.sendPickupReadySms(id);
+  }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Post(':id/photos')
+  addPhoto(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddPhotoDto,
+  ) {
+    return this.transactionsService.addPhoto(id, dto);
+  }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Delete(':id/photos/:photoId')
+  removePhoto(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('photoId', ParseIntPipe) photoId: number,
+  ) {
+    return this.transactionsService.removePhoto(id, photoId);
   }
 
   @UseGuards(SupabaseAuthGuard, RolesGuard)
