@@ -381,7 +381,8 @@ export default function DashboardPage() {
                             setDepositAmount('');
                             setDepositError('');
                           }}
-                          className="flex items-center px-2.5 py-1.5 -mr-2 text-[11px] font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors duration-150"
+                          disabled={!collectionsData || parseFloat(collectionsData['gcash'] ?? '0') <= 0}
+                          className="flex items-center px-2.5 py-1.5 -mr-2 text-[11px] font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors duration-150 disabled:text-zinc-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
                         >
                           + Add
                         </button>
