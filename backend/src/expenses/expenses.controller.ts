@@ -61,7 +61,7 @@ export class ExpensesController {
     @Query('year') year: string,
     @Query('month') month: string,
   ) {
-    const dbUser = await this.usersService.findById(req.user.id);
+    const dbUser = await this.usersService.findById(req.user.id) as { userType: string; branchId?: number | null } | null;
     const branchId = this.scopedBranchId(dbUser);
     return this.expensesService.findByMonth(
       parseInt(year, 10),
