@@ -1,0 +1,15 @@
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Copy pre-built dist from local (build locally before docker build)
+COPY backend/dist ./dist
+COPY backend/package.json ./
+
+# Install production dependencies only
+RUN npm install --omit=dev
+
+EXPOSE 8080
+
+CMD ["node", "dist/src/main"]

@@ -71,7 +71,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
   const [smsSending, setSmsSending] = useState(false);
-  const [smsConfirmed, setSmsConfirmed] = useState(false);
+  const [_smsConfirmed, setSmsConfirmed] = useState(false);
 
   const txnPhotoFileRef = useRef<HTMLInputElement>(null);
   const txnPhotoCameraRef = useRef<HTMLInputElement>(null);

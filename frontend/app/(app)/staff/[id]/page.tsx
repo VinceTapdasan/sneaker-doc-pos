@@ -54,7 +54,7 @@ function initials(user: AppUser) {
   return user.email.slice(0, 2).toUpperCase();
 }
 
-function displayName(user: AppUser) {
+function _displayName(user: AppUser) {
   return user.fullName ?? user.nickname ?? null;
 }
 
