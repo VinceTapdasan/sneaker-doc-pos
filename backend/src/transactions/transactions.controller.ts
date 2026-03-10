@@ -10,13 +10,13 @@ import {
   Query,
   UseGuards,
   Req,
-  NotFoundException,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import type { AuthedRequest } from '../auth/auth.types';
 import { TransactionsService } from './transactions.service';
+import { UsersService } from '../users/users.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
@@ -25,11 +25,25 @@ import { AddPhotoDto } from './dto/add-photo.dto';
 
 @Controller('transactions')
 export class TransactionsController {
-  constructor(private readonly transactionsService: TransactionsService) {}
+  constructor(
+    private readonly transactionsService: TransactionsService,
+    private readonly usersService: UsersService,
+  ) {}
+
+  // superadmin always sees all (optionally filtered by query branchId); everyone else scoped to their branch
+  private async scopedBranchId(userId: string, queryBranchId?: string): Promise<number | undefined> {
+    const user = await this.usersService.findById(userId);
+    if (!user) return undefined;
+    if (user.userType === 'superadmin') {
+      return queryBranchId ? parseInt(queryBranchId, 10) : undefined;
+    }
+    return user.branchId ?? undefined;
+  }
 
   @UseGuards(SupabaseAuthGuard)
   @Get()
-  findAll(
+  async findAll(
+    @Req() req: AuthedRequest,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('status') status?: string,
@@ -38,6 +52,7 @@ export class TransactionsController {
     @Query('to') to?: string,
     @Query('branchId') branchId?: string,
   ) {
+    const branch = await this.scopedBranchId(req.user.id, branchId);
     return this.transactionsService.findAll({
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 50,
@@ -45,50 +60,62 @@ export class TransactionsController {
       search: search || undefined,
       from: from || undefined,
       to: to || undefined,
-      branchId: branchId ? parseInt(branchId, 10) : undefined,
+      branchId: branch,
     });
   }
 
   @UseGuards(SupabaseAuthGuard)
   @Get('recent')
-  findRecent(@Query('limit') limit?: string) {
+  async findRecent(@Req() req: AuthedRequest, @Query('limit') limit?: string) {
+    const branch = await this.scopedBranchId(req.user.id);
     return this.transactionsService.findRecent(
       limit ? parseInt(limit, 10) : 10,
+      branch,
     );
   }
 
   @UseGuards(SupabaseAuthGuard)
   @Get('upcoming')
-  findUpcoming() {
-    return this.transactionsService.findUpcoming();
+  async findUpcoming(@Req() req: AuthedRequest) {
+    const branch = await this.scopedBranchId(req.user.id);
+    return this.transactionsService.findUpcoming(branch);
   }
 
   @UseGuards(SupabaseAuthGuard)
   @Get('upcoming/monthly')
-  findUpcomingByMonth(@Query('year') year: string, @Query('month') month: string) {
+  async findUpcomingByMonth(
+    @Req() req: AuthedRequest,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    const branch = await this.scopedBranchId(req.user.id);
     return this.transactionsService.findUpcomingByMonth(
       parseInt(year, 10),
       parseInt(month, 10),
+      branch,
     );
   }
 
   @UseGuards(SupabaseAuthGuard)
   @Get('today-collections')
-  todayCollections() {
-    return this.transactionsService.todayCollections();
+  async todayCollections(@Req() req: AuthedRequest) {
+    const branch = await this.scopedBranchId(req.user.id);
+    return this.transactionsService.todayCollections(branch);
   }
 
   @UseGuards(SupabaseAuthGuard)
   @Get('collections/summary')
-  collectionsSummary(
+  async collectionsSummary(
+    @Req() req: AuthedRequest,
     @Query('year') year: string,
     @Query('month') month: string,
     @Query('branchId') branchId?: string,
   ) {
+    const branch = await this.scopedBranchId(req.user.id, branchId);
     return this.transactionsService.collectionsSummary(
       parseInt(year, 10),
       parseInt(month, 10),
-      branchId ? parseInt(branchId, 10) : undefined,
+      branch,
     );
   }
 
@@ -101,16 +128,15 @@ export class TransactionsController {
   @UseGuards(SupabaseAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   @Get('deleted')
-  findDeleted() {
-    return this.transactionsService.findDeleted();
+  async findDeleted(@Req() req: AuthedRequest) {
+    const branch = await this.scopedBranchId(req.user.id);
+    return this.transactionsService.findDeleted(branch);
   }
 
   @UseGuards(SupabaseAuthGuard)
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number) {
-    const txn = await this.transactionsService.findOne(id);
-    if (txn.deletedAt) throw new NotFoundException(`Transaction ${id} not found`);
-    return txn;
+    return this.transactionsService.findOne(id);
   }
 
   @UseGuards(SupabaseAuthGuard)

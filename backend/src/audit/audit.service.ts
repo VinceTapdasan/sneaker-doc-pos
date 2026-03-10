@@ -19,8 +19,8 @@ interface LogActionParams {
 export class AuditService {
   constructor(private readonly drizzle: DrizzleService) {}
 
-  async findAll(params: { limit?: number; month?: number; year?: number; performedBy?: string } = {}) {
-    const { limit = 200, month, year, performedBy } = params;
+  async findAll(params: { limit?: number; month?: number; year?: number; performedBy?: string; branchId?: number } = {}) {
+    const { limit = 200, month, year, performedBy, branchId } = params;
     const conditions: ReturnType<typeof eq>[] = [];
 
     if (month && year) {
@@ -35,6 +35,10 @@ export class AuditService {
 
     if (performedBy) {
       conditions.push(eq(auditLog.performedBy, performedBy));
+    }
+
+    if (branchId) {
+      conditions.push(eq(auditLog.branchId, branchId) as ReturnType<typeof eq>);
     }
 
     return this.drizzle.db

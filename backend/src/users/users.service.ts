@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { asc, eq, and, ne } from 'drizzle-orm';
+import { asc, eq, and } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import { AuditService } from '../audit/audit.service';
 import { users, staffDocuments } from '../db/schema';
@@ -52,16 +52,24 @@ export class UsersService {
     return user?.branchId ?? null;
   }
 
-  async findAll() {
+  async findAll(branchId?: number) {
+    const whereClause = branchId
+      ? and(eq(users.isActive, true), eq(users.branchId, branchId))
+      : eq(users.isActive, true);
     return this.drizzle.db
       .select()
       .from(users)
-      .where(eq(users.isActive, true))
+      .where(whereClause)
       .orderBy(asc(users.createdAt));
   }
 
-  // Returns active non-superadmin users for transaction assignment dropdowns
-  async findAssignable() {
+  // Returns active users for transaction assignment dropdowns
+  // Filtered to the same branch if branchId is provided
+  async findAssignable(branchId?: number | null) {
+    const baseCondition = eq(users.isActive, true);
+    const whereClause = branchId
+      ? and(baseCondition, eq(users.branchId, branchId))
+      : baseCondition;
     return this.drizzle.db
       .select({
         id: users.id,
@@ -72,7 +80,7 @@ export class UsersService {
         branchId: users.branchId,
       })
       .from(users)
-      .where(and(eq(users.isActive, true), ne(users.userType, 'superadmin')))
+      .where(whereClause)
       .orderBy(asc(users.nickname));
   }
 
@@ -91,6 +99,7 @@ export class UsersService {
       entityId: id,
       source: 'admin',
       performedBy,
+      branchId: user.branchId ?? undefined,
       details: { email: user.email },
     });
   }
@@ -111,6 +120,7 @@ export class UsersService {
       entityId: id,
       source: 'admin',
       performedBy,
+      branchId: user.branchId ?? undefined,
       details: { email: user.email, prevRole: user.userType, newRole: userType },
     });
 
@@ -133,6 +143,7 @@ export class UsersService {
       entityId: id,
       source: 'admin',
       performedBy,
+      branchId: user.branchId ?? undefined,
     });
 
     return updated;
@@ -176,6 +187,7 @@ export class UsersService {
       entityId: id,
       source: 'admin',
       performedBy,
+      branchId,
       details: { email: user.email, prevBranchId: user.branchId, newBranchId: branchId },
     });
 

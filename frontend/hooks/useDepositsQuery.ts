@@ -25,6 +25,7 @@ export function useUpsertDepositMutation(year: number, month: number, branchId?:
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['deposits', year, month, branchId] });
       void qc.invalidateQueries({ queryKey: ['deposits-audit'] });
+      void qc.invalidateQueries({ queryKey: ['collections-summary'] });
     },
   });
 }

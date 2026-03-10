@@ -49,6 +49,9 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     throw new ApiError(res.status, (err as { message?: string }).message ?? 'Request failed');
   }
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
   return res.json() as Promise<T>;
 }
 
@@ -94,7 +97,7 @@ export const api = {
     deletePhoto: (txnId: number, photoId: number) =>
       apiFetch<void>(`/transactions/${txnId}/photos/${photoId}`, { method: 'DELETE' }),
     deleted: () => apiFetch<Transaction[]>('/transactions/deleted'),
-    restore: (id: number) => apiFetch<void>(`/transactions/${id}/restore`, { method: 'PATCH' }),
+    restore: (id: number) => apiFetch<Transaction>(`/transactions/${id}/restore`, { method: 'PATCH' }),
     delete: (id: number) => apiFetch<void>(`/transactions/${id}`, { method: 'DELETE' }),
   },
 

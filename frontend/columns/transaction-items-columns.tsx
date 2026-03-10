@@ -126,7 +126,7 @@ function ImageCell({
     >
       {/* Skeleton shown until image loads */}
       {!loaded && (
-        <div className="absolute inset-0 bg-zinc-100 animate-pulse" />
+        <div className="absolute inset-0 bg-zinc-200 animate-pulse" />
       )}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -194,36 +194,6 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
             </span>
           ))}
         </div>
-      );
-    },
-  },
-  {
-    accessorKey: 'beforeImageUrl',
-    header: 'Before',
-    cell: ({ row }) => (
-      <ImageCell
-        url={row.original.beforeImageUrl}
-        label="Before"
-        uploading={uploadingItemIds?.has(`${row.original.id}-before`)}
-        onImageClick={onImageClick}
-        onUploadClick={disableUploadBefore ? undefined : () => onUploadClick?.(row.original.id, 'before')}
-      />
-    ),
-  },
-  {
-    accessorKey: 'afterImageUrl',
-    header: 'After',
-    cell: ({ row }) => {
-      const cancelled = row.original.status === ITEM_STATUS.CANCELLED;
-      return (
-        <ImageCell
-          url={row.original.afterImageUrl}
-          label="After"
-          uploading={uploadingItemIds?.has(`${row.original.id}-after`)}
-          onImageClick={onImageClick}
-          onUploadClick={cancelled ? undefined : () => onUploadClick?.(row.original.id, 'after')}
-          onCameraClick={cancelled ? undefined : () => onCameraClick?.(row.original.id, 'after')}
-        />
       );
     },
   },

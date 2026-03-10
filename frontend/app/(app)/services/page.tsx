@@ -104,7 +104,7 @@ export default function ServicesPage() {
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-12 bg-zinc-100 rounded-lg animate-pulse" />
+            <div key={i} className="h-12 bg-zinc-200 rounded-lg animate-pulse" />
           ))}
         </div>
       ) : services.length === 0 ? (

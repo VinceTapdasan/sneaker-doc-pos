@@ -28,6 +28,7 @@ import {
   promos,
   services,
   branches,
+  deposits,
   users as usersTable, // alias to avoid conflict with this.users (UsersService)
 } from '../db/schema';
 import {
@@ -321,11 +322,41 @@ export class TransactionsService {
       performedBy,
       branchId: branchId ?? undefined,
       details: {
-        number: created.number,
-        customerName: created.customerName,
-        total: created.total, // scaled bigint in audit details (intentional)
+        txnNumber: created.number,
+        createdAt: created.createdAt,
+        customerName: created.customerName ?? null,
+        customerPhone: created.customerPhone ?? null,
+        customerEmail: created.customerEmail ?? null,
+        pickupDate: created.pickupDate ?? null,
+        total: fromScaled(created.total),
+        paid: fromScaled(created.paid),
+        status: created.status,
+        promoId: created.promoId ?? null,
+        staffId: created.staffId ?? null,
+        branchId: created.branchId ?? null,
+        itemCount: dto.items?.length ?? 0,
+        items: (dto.items ?? []).map((i) => ({
+          shoe: i.shoeDescription ?? null,
+          serviceId: i.serviceId ?? null,
+          price: i.price ?? null,
+        })),
+        note: dto.note ?? null,
+        source,
       },
     });
+
+    if (dto.staffId) {
+      await this.audit.log({
+        action: 'assign',
+        auditType: AUDIT_TYPE.TRANSACTION_ASSIGNED,
+        entityType: 'transaction',
+        entityId: created.number,
+        source,
+        performedBy,
+        branchId: branchId ?? undefined,
+        details: { staffId: dto.staffId, txnNumber: created.number },
+      });
+    }
 
     return this.findOne(created.id);
   }
@@ -399,6 +430,10 @@ export class TransactionsService {
         from: existing.newPickupDate ?? existing.pickupDate,
         to: dto.newPickupDate,
       };
+    } else if ('staffId' in dto && dto.staffId !== existing.staffId) {
+      auditType = AUDIT_TYPE.TRANSACTION_ASSIGNED;
+      action = 'assign';
+      auditDetails = { from: existing.staffId ?? null, to: dto.staffId ?? null };
     }
 
     const branchId = performedBy
@@ -436,17 +471,21 @@ export class TransactionsService {
     return this.findOne(id);
   }
 
-  async findRecent(limit = 10) {
+  async findRecent(limit = 10, branchId?: number) {
+    const conditions: ReturnType<typeof eq>[] = [
+      isNull(transactions.deletedAt) as ReturnType<typeof eq>,
+    ];
+    if (branchId) conditions.push(eq(transactions.branchId, branchId));
     const rows = await this.drizzle.db
       .select()
       .from(transactions)
-      .where(isNull(transactions.deletedAt))
+      .where(and(...conditions))
       .orderBy(desc(transactions.createdAt))
       .limit(limit);
     return rows.map(mapTxn);
   }
 
-  async findUpcoming() {
+  async findUpcoming(branchId?: number) {
     const today = new Date().toISOString().split('T')[0];
     const plus3 = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
       .toISOString()
@@ -457,6 +496,7 @@ export class TransactionsService {
       .where(
         and(
           isNull(transactions.deletedAt),
+          ...(branchId ? [eq(transactions.branchId, branchId)] : []),
           not(inArray(transactions.status, ['done', 'claimed', 'cancelled'])),
           or(
             // original pickup date within 3 days
@@ -477,7 +517,7 @@ export class TransactionsService {
     return rows.map(mapTxn);
   }
 
-  async findUpcomingByMonth(year: number, month: number) {
+  async findUpcomingByMonth(year: number, month: number, branchId?: number) {
     const from = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(year, month, 0).getDate();
     const to = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
@@ -487,6 +527,7 @@ export class TransactionsService {
       .where(
         and(
           isNull(transactions.deletedAt),
+          ...(branchId ? [eq(transactions.branchId, branchId)] : []),
           not(inArray(transactions.status, ['claimed', 'cancelled'])),
           or(
             and(gte(transactions.pickupDate, from), lte(transactions.pickupDate, to)),
@@ -532,20 +573,48 @@ export class TransactionsService {
       .where(and(...conditions))
       .groupBy(claimPayments.method);
 
-    const result: Record<string, string> = {
-      cash: '0.00',
-      gcash: '0.00',
-      card: '0.00',
-      bank_deposit: '0.00',
+    const collected: Record<string, number> = {
+      cash: 0,
+      gcash: 0,
+      card: 0,
+      bank_deposit: 0,
     };
     rows.forEach((r) => {
-      result[r.method] = fromScaled(r.total);
+      collected[r.method] = r.total;
     });
-    return result;
+
+    // Fetch bank deposit total to compute net GCash (gcash collected - deposited to bank)
+    // month=0 means full year — sum across all months
+    const depositConditions: ReturnType<typeof eq>[] = [
+      eq(deposits.year, year),
+      eq(deposits.method, 'bank_deposit'),
+      (branchId ? eq(deposits.branchId, branchId) : isNull(deposits.branchId)) as ReturnType<typeof eq>,
+      ...(month !== 0 ? [eq(deposits.month, month)] : []),
+    ];
+    const depositRows = await this.drizzle.db
+      .select({ total: sql<number>`COALESCE(SUM(${deposits.amount}), 0)` })
+      .from(deposits)
+      .where(and(...depositConditions));
+    const bankDepositedScaled = depositRows[0]?.total ?? 0;
+
+    const gcashNet = Math.max(0, collected.gcash - bankDepositedScaled);
+
+    return {
+      cash: fromScaled(collected.cash),
+      gcash: fromScaled(gcashNet),
+      card: fromScaled(collected.card),
+      bank_deposit: fromScaled(bankDepositedScaled),
+    };
   }
 
-  async todayCollections() {
+  async todayCollections(branchId?: number) {
     const today = new Date().toISOString().split('T')[0];
+    const conditions: ReturnType<typeof eq>[] = [
+      sql`${claimPayments.paidAt}::date = ${today}::date` as ReturnType<typeof eq>,
+      isNull(transactions.deletedAt) as ReturnType<typeof eq>,
+      ne(transactions.status, 'cancelled') as ReturnType<typeof eq>,
+    ];
+    if (branchId) conditions.push(eq(transactions.branchId, branchId) as ReturnType<typeof eq>);
     const rows = await this.drizzle.db
       .select({
         id: claimPayments.id,
@@ -558,13 +627,7 @@ export class TransactionsService {
       })
       .from(claimPayments)
       .innerJoin(transactions, eq(claimPayments.transactionId, transactions.id))
-      .where(
-        and(
-          sql`${claimPayments.paidAt}::date = ${today}::date` as ReturnType<typeof eq>,
-          isNull(transactions.deletedAt) as ReturnType<typeof eq>,
-          ne(transactions.status, 'cancelled') as ReturnType<typeof eq>,
-        ),
-      )
+      .where(and(...conditions))
       .orderBy(desc(claimPayments.paidAt));
     return rows.map((r) => ({ ...r, amount: fromScaled(r.amount) }));
   }
@@ -730,10 +793,28 @@ export class TransactionsService {
       performedBy,
       branchId: branchId ?? undefined,
       details: {
-        method: dto.method,
-        amount: payment.amount,
-        newPaid: newPaidScaled,
-        ...(dto.referenceNumber ? { referenceNumber: dto.referenceNumber } : {}),
+        paidAt: payment.paidAt,
+        txnNumber: txn.number,
+        txnStatus: txn.status,
+        customerName: txn.customerName ?? null,
+        customerPhone: txn.customerPhone ?? null,
+        staffId: txn.staffId ?? null,
+        payment: {
+          method: dto.method,
+          amount: fromScaled(payment.amount),
+          referenceNumber: dto.referenceNumber ?? null,
+        },
+        balanceBefore: txn.paid,
+        balanceAfter: fromScaled(newPaidScaled),
+        totalDue: txn.total,
+        itemCount: txn.items?.length ?? 0,
+        items: (txn.items ?? []).map((i) => ({
+          id: i.id,
+          shoe: i.shoeDescription ?? null,
+          service: i.service?.name ?? null,
+          price: i.price ?? null,
+          status: i.status,
+        })),
       },
     });
 
@@ -781,6 +862,13 @@ export class TransactionsService {
   async remove(id: number, performedBy?: string) {
     const txn = await this.findOne(id);
 
+    if (txn.status === 'claimed') {
+      throw new BadRequestException('Cannot delete a claimed transaction.');
+    }
+    if (toScaled(txn.paid) > 0) {
+      throw new BadRequestException('Cannot delete a transaction with recorded payments.');
+    }
+
     await this.drizzle.db
       .update(transactions)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
@@ -801,11 +889,15 @@ export class TransactionsService {
     });
   }
 
-  async findDeleted() {
+  async findDeleted(branchId?: number) {
+    const conditions: ReturnType<typeof eq>[] = [
+      isNotNull(transactions.deletedAt) as ReturnType<typeof eq>,
+    ];
+    if (branchId) conditions.push(eq(transactions.branchId, branchId));
     const rows = await this.drizzle.db
       .select()
       .from(transactions)
-      .where(isNotNull(transactions.deletedAt))
+      .where(and(...conditions))
       .orderBy(desc(transactions.deletedAt));
     return rows.map(mapTxn);
   }
@@ -817,18 +909,19 @@ export class TransactionsService {
       .where(and(eq(transactions.id, id), isNotNull(transactions.deletedAt)));
     if (!txn) throw new NotFoundException(`Deleted transaction ${id} not found`);
 
-    await this.drizzle.db
+    const [restored] = await this.drizzle.db
       .update(transactions)
       .set({ deletedAt: null, updatedAt: new Date() })
-      .where(eq(transactions.id, id));
+      .where(eq(transactions.id, id))
+      .returning();
 
     const branchId = performedBy
       ? await this.users.getBranchId(performedBy)
       : null;
 
     await this.audit.log({
-      action: 'update',
-      auditType: AUDIT_TYPE.TRANSACTION_UPDATED,
+      action: 'restore',
+      auditType: AUDIT_TYPE.TRANSACTION_RESTORED,
       entityType: 'transaction',
       entityId: txn.number,
       source: 'admin',
@@ -836,5 +929,7 @@ export class TransactionsService {
       branchId: branchId ?? undefined,
       details: { restored: true },
     });
+
+    return mapTxn(restored);
   }
 }

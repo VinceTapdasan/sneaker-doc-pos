@@ -49,13 +49,26 @@ export class UsersController {
   @Get()
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
-  findAll() {
-    return this.usersService.findAll();
+  async findAll(@Request() req: { user: { id: string } }) {
+    const currentUser = await this.usersService.findById(req.user.id);
+    if (!currentUser) return [];
+    // superadmin always sees all branches; everyone else scoped to their branch
+    const branchId =
+      currentUser.userType === 'superadmin'
+        ? undefined
+        : currentUser.branchId ?? undefined;
+    return this.usersService.findAll(branchId);
   }
 
   @Get('assignable')
-  findAssignable() {
-    return this.usersService.findAssignable();
+  async findAssignable(@Request() req: { user: { id: string } }) {
+    const currentUser = await this.usersService.findById(req.user.id);
+    if (!currentUser) return [];
+    // Non-superadmin with no branch → no access
+    if (currentUser.userType !== 'superadmin' && !currentUser.branchId) return [];
+    // Always filter by the user's own branchId if set — even superadmins
+    // Superadmin without a branchId is the only case that sees all users across branches
+    return this.usersService.findAssignable(currentUser.branchId);
   }
 
   @Get(':id')

@@ -13,6 +13,7 @@ import {
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { cn, formatDatetime } from '@/lib/utils';
+import { toTitleCase } from '@/utils/text';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -63,6 +64,8 @@ export default function StaffProfilePage() {
 
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
+  const isSelf = currentUser?.id === userId;
+  const canUpload = isAdmin || isSelf;
 
   const { data: user, isLoading } = useUserQuery(userId);
   const { data: docs = [], isLoading: docsLoading } = useStaffDocumentsQuery(userId);
@@ -83,6 +86,35 @@ export default function StaffProfilePage() {
     emergencyContactNumber: '',
   });
 
+  const [touched, setTouched] = useState<Partial<Record<keyof typeof form, boolean>>>({});
+
+  const PHONE_RE = /^(09|\+639)\d{9}$/;
+
+  function isValidDate(val: string) {
+    if (!val) return true;
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return false;
+    const year = d.getFullYear();
+    return year >= 1900 && year <= new Date().getFullYear();
+  }
+
+  const errors = {
+    contactNumber:
+      touched.contactNumber && form.contactNumber && !PHONE_RE.test(form.contactNumber)
+        ? 'Enter a valid PH mobile number (e.g. 09XX XXX XXXX)'
+        : undefined,
+    birthday:
+      touched.birthday && !isValidDate(form.birthday)
+        ? 'Enter a valid date'
+        : undefined,
+  };
+
+  const hasErrors = Object.values(errors).some(Boolean);
+
+  function touch(field: keyof typeof form) {
+    setTouched((t) => ({ ...t, [field]: true }));
+  }
+
   useEffect(() => {
     if (user) {
       setForm({
@@ -102,6 +134,8 @@ export default function StaffProfilePage() {
   }
 
   function handleSave() {
+    setTouched({ contactNumber: true, birthday: true });
+    if (hasErrors) return;
     updateMut.mutate({
       id: userId,
       data: {
@@ -117,9 +151,69 @@ export default function StaffProfilePage() {
   }
 
   const fileRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [uploading, setUploading] = useState(false);
   const [docLabel, setDocLabel] = useState('');
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [capturedImage, setCapturedImage] = useState<{ url: string; file: File } | null>(null);
+
+  async function openCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      streamRef.current = stream;
+      setCapturedImage(null);
+      setCameraOpen(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          void videoRef.current.play();
+        }
+      }, 50);
+    } catch {
+      toast.error('Camera not available');
+    }
+  }
+
+  function closeCamera() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraOpen(false);
+    setCapturedImage(null);
+  }
+
+  function capturePhoto() {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d')?.drawImage(video, 0, 0);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      // stop stream and show preview
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      setCapturedImage({ url: URL.createObjectURL(blob), file });
+    }, 'image/jpeg', 0.9);
+  }
+
+  function retakePhoto() {
+    if (capturedImage) URL.revokeObjectURL(capturedImage.url);
+    setCapturedImage(null);
+    // restart stream
+    void openCamera();
+  }
+
+  function confirmPhoto() {
+    if (!capturedImage) return;
+    const file = capturedImage.file;
+    URL.revokeObjectURL(capturedImage.url);
+    setCapturedImage(null);
+    setCameraOpen(false);
+    void handleDocUpload(file);
+  }
 
   async function handleDocUpload(file: File) {
     setUploading(true);
@@ -133,7 +227,6 @@ export default function StaffProfilePage() {
       await addDocMut.mutateAsync({ url: urlData.publicUrl, label: docLabel.trim() || file.name });
       setDocLabel('');
       if (fileRef.current) fileRef.current.value = '';
-      if (cameraRef.current) cameraRef.current.value = '';
       toast.success('Document uploaded');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Upload failed');
@@ -160,7 +253,7 @@ export default function StaffProfilePage() {
 
   return (
     <div>
-      {/* Hidden file inputs */}
+      {/* Hidden file input */}
       <input
         ref={fileRef}
         type="file"
@@ -168,14 +261,58 @@ export default function StaffProfilePage() {
         className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleDocUpload(f); }}
       />
-      <input
-        ref={cameraRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleDocUpload(f); }}
-      />
+
+      {/* Camera modal — fullscreen on mobile */}
+      {cameraOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black sm:items-center sm:justify-center sm:bg-black/80">
+          <div className="flex flex-col flex-1 sm:flex-none sm:rounded-xl sm:overflow-hidden sm:shadow-xl sm:w-full sm:max-w-md bg-black">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 bg-black/60 sm:bg-zinc-900">
+              <span className="text-sm font-semibold text-white">
+                {capturedImage ? 'Preview' : 'Take Photo'}
+              </span>
+              <button onClick={closeCamera} className="text-xs text-zinc-400 hover:text-white transition-colors">Cancel</button>
+            </div>
+
+            {/* Video / Preview */}
+            <div className="flex-1 sm:flex-none relative">
+              {capturedImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={capturedImage.url} alt="Preview" className="w-full sm:max-h-96 object-contain bg-black" />
+              ) : (
+                <video ref={videoRef} className="w-full sm:max-h-96 object-cover bg-black" playsInline muted />
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 justify-center p-4 bg-black/60 sm:bg-zinc-900">
+              {capturedImage ? (
+                <>
+                  <button
+                    onClick={retakePhoto}
+                    className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-medium text-zinc-300 bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors"
+                  >
+                    Retake
+                  </button>
+                  <button
+                    onClick={confirmPhoto}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
+                  >
+                    Use Photo
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={capturePhoto}
+                  className="w-16 h-16 flex items-center justify-center rounded-full border-4 border-white bg-white/20 hover:bg-white/30 transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-full bg-white" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Back link */}
       <div className="mb-6">
@@ -195,11 +332,29 @@ export default function StaffProfilePage() {
         </div>
         <div className="flex-1 min-w-0">
           <h1 className="text-lg font-semibold text-zinc-950 truncate">
-            {displayName(user) ?? user.email}
+            {user.fullName ? (
+              <>
+                {toTitleCase(user.fullName)}
+                {user.nickname && (
+                  <span className="font-normal text-zinc-400"> ({toTitleCase(user.nickname)})</span>
+                )}
+              </>
+            ) : user.nickname ? (
+              toTitleCase(user.nickname)
+            ) : (
+              user.email
+            )}
           </h1>
-          {displayName(user) && user.fullName && user.nickname && (
-            <p className="text-sm text-zinc-400 truncate">{user.nickname}</p>
-          )}
+          {(() => {
+            const meta = [
+              user.email,
+              user.contactNumber ?? null,
+              user.address ? toTitleCase(user.address) : null,
+            ].filter(Boolean).join(' | ');
+            return meta ? (
+              <p className="text-sm text-zinc-400 truncate mt-0.5">{meta}</p>
+            ) : null;
+          })()}
         </div>
         <span className={cn(
           'shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide',
@@ -276,15 +431,19 @@ export default function StaffProfilePage() {
                     label="Contact Number"
                     value={form.contactNumber}
                     onChange={(e) => set('contactNumber', e.target.value)}
+                    onBlur={() => touch('contactNumber')}
                     placeholder="09XX XXX XXXX"
                     readOnly={!isAdmin}
+                    error={errors.contactNumber}
                   />
                   <Input
                     label="Birthday"
                     type="date"
                     value={form.birthday}
                     onChange={(e) => set('birthday', e.target.value)}
+                    onBlur={() => touch('birthday')}
                     readOnly={!isAdmin}
+                    error={errors.birthday}
                   />
                 </div>
                 <Input
@@ -333,10 +492,10 @@ export default function StaffProfilePage() {
             <div className="bg-white border border-zinc-200 rounded-lg p-5 sm:p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-zinc-950">Documents</h2>
-                {isAdmin && (
+                {canUpload && (
                   <div className="flex gap-1.5">
                     <button
-                      onClick={() => cameraRef.current?.click()}
+                      onClick={() => void openCamera()}
                       disabled={uploading}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-md transition-colors disabled:opacity-50"
                     >
@@ -355,7 +514,7 @@ export default function StaffProfilePage() {
                 )}
               </div>
 
-              {isAdmin && (
+              {canUpload && (
                 <Input
                   placeholder="Document label (optional)"
                   value={docLabel}
@@ -386,7 +545,7 @@ export default function StaffProfilePage() {
                       >
                         <ArrowSquareOutIcon size={15} />
                       </a>
-                      {isAdmin && (
+                      {canUpload && (
                         <button
                           onClick={() => deleteDocMut.mutate(doc.id)}
                           disabled={deleteDocMut.isPending}

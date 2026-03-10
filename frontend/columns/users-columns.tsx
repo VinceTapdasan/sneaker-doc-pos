@@ -58,21 +58,9 @@ export const createUserColumns = ({
     header: 'Staff',
     cell: ({ row }) => {
       const u = row.original;
-      const primary = u.fullName ?? u.nickname ?? u.email;
-      const details = [
-        u.nickname && u.fullName ? u.nickname : null,
-        u.email,
-        u.address ?? null,
-        u.contactNumber ?? null,
-      ].filter(Boolean).join('  ·  ');
-      return (
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-zinc-950 truncate">{primary}</p>
-          {details && (
-            <p className="text-xs text-zinc-400 truncate mt-0.5">{details}</p>
-          )}
-        </div>
-      );
+      const name = u.fullName ?? u.nickname ?? null;
+      const primary = name ? toTitleCase(name) : u.email;
+      return <span className="text-sm text-zinc-950">{primary}</span>;
     },
   },
   {

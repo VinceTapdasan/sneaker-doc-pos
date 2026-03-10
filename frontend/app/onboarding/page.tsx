@@ -47,7 +47,7 @@ export default function OnboardingPage() {
           {branchesLoading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-10 bg-zinc-100 rounded animate-pulse" />
+                <div key={i} className="h-10 bg-zinc-200 rounded animate-pulse" />
               ))}
             </div>
           ) : branches.length === 0 ? (

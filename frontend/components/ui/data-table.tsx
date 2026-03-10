@@ -86,7 +86,7 @@ export function DataTable<TData, TValue>({
                 <TableRow key={i} className="border-zinc-100">
                   {columns.map((_, j) => (
                     <TableCell key={j}>
-                      <div className="h-4 bg-zinc-100 rounded animate-pulse" />
+                      <div className="h-4 bg-zinc-200 rounded animate-pulse" />
                     </TableCell>
                   ))}
                 </TableRow>

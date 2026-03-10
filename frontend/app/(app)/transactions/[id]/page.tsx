@@ -3,7 +3,7 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeftIcon, PlusIcon, EnvelopeIcon, PaperPlaneTiltIcon, TrashIcon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, PlusIcon, EnvelopeIcon, PaperPlaneTiltIcon, TrashIcon, CameraIcon, UploadSimpleIcon, ArrowCounterClockwiseIcon, WarningIcon } from '@phosphor-icons/react';
 import { Lightbox } from '@/components/ui/lightbox';
 import Link from 'next/link';
 import { formatPeso, formatDate, formatDatetime, formatAddress, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
@@ -34,6 +34,7 @@ import {
   useUpdateItemStatusMutation,
   useAddPaymentMutation,
   useDeleteTransactionMutation,
+  useRestoreTransactionMutation,
 } from '@/hooks/useTransactionsQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { useUploadPhotoMutation, useUploadTxnPhotoMutation } from '@/hooks/useUploadPhoto';
@@ -67,6 +68,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const stubRef = useRef<HTMLDivElement>(null);
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
   const [smsSending, setSmsSending] = useState(false);
   const [smsConfirmed, setSmsConfirmed] = useState(false);
@@ -86,6 +88,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const { data: txn, isLoading, isFetching } = useTransactionDetailQuery(id);
   const updateTxnMut = useUpdateTransactionMutation(id);
   const deleteTxnMut = useDeleteTransactionMutation(() => router.replace('/transactions'));
+  const restoreTxnMut = useRestoreTransactionMutation(() => router.replace('/transactions'));
   const updateItemStatusMut = useUpdateItemStatusMutation(id);
   const uploadPhotoMut = useUploadPhotoMutation(id);
   const uploadTxnPhotoMut = useUploadTxnPhotoMutation(id);
@@ -219,11 +222,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     setPaymentError('');
   });
 
-  if (isLoading) {
+  if (isLoading || (isFetching && !txn)) {
     return (
       <div className="space-y-4">
+        <div className="h-8 w-48 bg-zinc-200 rounded animate-pulse mb-2" />
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-24 bg-white border border-zinc-200 rounded-lg animate-pulse" />
+          <div key={i} className="h-28 bg-zinc-200 border border-zinc-200 rounded-lg animate-pulse" />
         ))}
       </div>
     );
@@ -233,7 +237,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
   const balance = parseFloat(txn.total) - parseFloat(txn.paid);
   const refundAmount = balance < 0 ? Math.abs(balance) : 0;
-  const txnLocked = ([TRANSACTION_STATUS.CANCELLED, TRANSACTION_STATUS.CLAIMED] as string[]).includes(txn.status);
+  const isDeleted = !!txn.deletedAt;
+  const txnLocked = isDeleted || ([TRANSACTION_STATUS.CANCELLED, TRANSACTION_STATUS.CLAIMED] as string[]).includes(txn.status);
 
   return (
     <div>
@@ -247,15 +252,51 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             </Button>
           </Link>
         }
-        action={isAdmin ? (
-          <Button variant="danger" size="sm" onClick={() => setDeleteConfirmOpen(true)}>
-            <TrashIcon size={14} />
-            Delete
-          </Button>
-        ) : undefined}
+        action={isAdmin ? (() => {
+          if (isDeleted) {
+            return (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={restoreTxnMut.isPending}
+                onClick={() => setRestoreConfirmOpen(true)}
+              >
+                <ArrowCounterClockwiseIcon size={14} />
+                {restoreTxnMut.isPending ? 'Restoring…' : 'Restore'}
+              </Button>
+            );
+          }
+          const cantDelete = txn.status === 'claimed' || parseFloat(txn.paid) > 0;
+          const deleteTitle = txn.status === 'claimed'
+            ? 'Cannot delete a claimed transaction'
+            : parseFloat(txn.paid) > 0
+              ? 'Cannot delete — payment has been recorded'
+              : undefined;
+          return (
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={cantDelete || deleteTxnMut.isPending}
+              title={deleteTitle}
+              onClick={() => !cantDelete && setDeleteConfirmOpen(true)}
+            >
+              <TrashIcon size={14} />
+              Delete
+            </Button>
+          );
+        })() : undefined}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {isDeleted && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <WarningIcon size={15} className="text-red-500 shrink-0" />
+          <p className="text-sm text-red-700">
+            This transaction was deleted on <span className="font-medium">{formatDate(txn.deletedAt!)}</span>. All fields are read-only and it is excluded from all reports.
+          </p>
+        </div>
+      )}
+
+      <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 ${isDeleted ? 'opacity-50 pointer-events-none select-none' : ''}`}>
         {/* Left: items */}
         <div className="lg:col-span-2 space-y-4">
           {/* Customer */}
@@ -276,6 +317,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                 <p className="text-xs text-zinc-400">Original Pickup</p>
                 <p className="text-sm text-zinc-700">{formatDate(txn.pickupDate)}</p>
               </div>
+              {txn.branchName && (
+                <div>
+                  <p className="text-xs text-zinc-400">Branch</p>
+                  <p className="text-sm text-zinc-700">{toTitleCase(txn.branchName)}</p>
+                </div>
+              )}
               {txn.staffNickname && (
                 <div>
                   <p className="text-xs text-zinc-400">Staff</p>
@@ -413,25 +460,27 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                       <div className="flex gap-1.5">
                         <button
                           type="button"
+                          title="Take photo"
                           disabled={uploadTxnPhotoMut.isPending}
                           onClick={() => {
                             pendingPhotoTypeRef.current = photoType;
                             txnPhotoCameraRef.current?.click();
                           }}
-                          className="px-2 py-1 text-[11px] font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded transition-colors duration-150 disabled:opacity-50"
+                          className="w-7 h-7 flex items-center justify-center text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded transition-colors duration-150 disabled:opacity-50"
                         >
-                          Camera
+                          <CameraIcon size={13} />
                         </button>
                         <button
                           type="button"
+                          title="Upload file"
                           disabled={uploadTxnPhotoMut.isPending}
                           onClick={() => {
                             pendingPhotoTypeRef.current = photoType;
                             txnPhotoFileRef.current?.click();
                           }}
-                          className="px-2 py-1 text-[11px] font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded transition-colors duration-150 disabled:opacity-50"
+                          className="w-7 h-7 flex items-center justify-center text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded transition-colors duration-150 disabled:opacity-50"
                         >
-                          Upload
+                          <UploadSimpleIcon size={13} />
                         </button>
                       </div>
                     )}
@@ -439,7 +488,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                   {photos.length === 0 ? (
                     <p className="text-xs text-zinc-400">No {photoType} photos yet.</p>
                   ) : (
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-5 sm:grid-cols-8 gap-1.5">
                       {photos.map((photo) => (
                         <button
                           key={photo.id}
@@ -686,7 +735,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                   <SelectItem value="unassigned">Unassigned</SelectItem>
                   {assignableUsers.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
-                      {u.nickname ?? u.fullName ?? u.email}
+                      {u.nickname || u.fullName ? toTitleCase(u.nickname ?? u.fullName ?? '') : u.email}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -867,11 +916,87 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       <ConfirmDialog
         open={deleteConfirmOpen}
         title="Delete transaction?"
-        description={`Delete #${txn.number}? It will be moved to trash and can be restored from the Transactions page.`}
-        onConfirm={() => { setDeleteConfirmOpen(false); deleteTxnMut.mutate(txn.id); }}
-        onCancel={() => setDeleteConfirmOpen(false)}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        onConfirm={() => { deleteTxnMut.mutate(txn.id); }}
+        onCancel={() => { if (!deleteTxnMut.isPending) setDeleteConfirmOpen(false); }}
         loading={deleteTxnMut.isPending}
-      />
+      >
+        <div className="space-y-3">
+          {/* Transaction summary */}
+          <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2.5 text-xs space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400">Transaction</span>
+              <span className="font-mono font-medium text-zinc-950">#{txn.number}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400">Customer</span>
+              <span className="text-zinc-950">{toTitleCase(txn.customerName) || '—'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400">Total</span>
+              <span className="font-mono text-zinc-950">{formatPeso(txn.total)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400">Paid</span>
+              <span className={`font-mono ${parseFloat(txn.paid) > 0 ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                {formatPeso(txn.paid)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400">Status</span>
+              <span className="capitalize text-zinc-700">{txn.status.replace('_', ' ')}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400">Items</span>
+              <span className="text-zinc-700">{txn.items?.length ?? 0}</span>
+            </div>
+          </div>
+
+          {/* Warning */}
+          <div className="rounded-md bg-red-50 border border-red-100 px-3 py-2">
+            <p className="text-xs text-red-700">
+              This will move the transaction to trash. It can be restored later from the Transactions page. Only transactions with no recorded payments and not yet claimed can be deleted.
+            </p>
+          </div>
+        </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={restoreConfirmOpen}
+        title="Restore transaction?"
+        confirmLabel="Restore"
+        confirmVariant="dark"
+        onConfirm={() => { restoreTxnMut.mutate(txn.id); }}
+        onCancel={() => { if (!restoreTxnMut.isPending) setRestoreConfirmOpen(false); }}
+        loading={restoreTxnMut.isPending}
+      >
+        <div className="space-y-3">
+          <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2.5 text-xs space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400">Transaction</span>
+              <span className="font-mono font-medium text-zinc-950">#{txn.number}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400">Customer</span>
+              <span className="text-zinc-950">{toTitleCase(txn.customerName) || '—'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400">Total</span>
+              <span className="font-mono text-zinc-950">{formatPeso(txn.total)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-400">Deleted on</span>
+              <span className="text-zinc-700">{formatDate(txn.deletedAt!)}</span>
+            </div>
+          </div>
+          <div className="rounded-md bg-amber-50 border border-amber-100 px-3 py-2">
+            <p className="text-xs text-amber-700">
+              Restoring will make this transaction active again and include it in reports and collections.
+            </p>
+          </div>
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }

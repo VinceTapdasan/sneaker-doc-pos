@@ -8,6 +8,7 @@ import type { AuditEntry } from '@/lib/types';
 const AUDIT_TYPE_LABELS: Record<string, string> = {
   TRANSACTION_CREATED: 'Transaction Created',
   TRANSACTION_UPDATED: 'Transaction Updated',
+  TRANSACTION_RESTORED: 'Transaction Restored',
   PICKUP_RESCHEDULED: 'Pickup Rescheduled',
   TRANSACTION_STATUS_CHANGED: 'Status Changed',
   TRANSACTION_CLAIMED: 'Transaction Claimed',
@@ -28,6 +29,7 @@ const AUDIT_TYPE_STYLES: Record<string, string> = {
   TRANSACTION_STATUS_CHANGED: 'bg-blue-50 text-blue-700',
   ITEM_STATUS_CHANGED: 'bg-blue-50 text-blue-700',
   TRANSACTION_UPDATED: 'bg-zinc-100 text-zinc-600',
+  TRANSACTION_RESTORED: 'bg-emerald-50 text-emerald-700',
   SERVICE_UPDATED: 'bg-zinc-100 text-zinc-600',
 };
 

@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -48,7 +49,7 @@ export function ConfirmDialog({
             Cancel
           </Button>
           <Button size="sm" variant={confirmVariant} onClick={onConfirm} disabled={loading}>
-            {confirmLabel}
+            {loading ? <Spinner /> : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

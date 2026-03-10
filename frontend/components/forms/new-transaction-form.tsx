@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { PlusIcon, ArrowLeftIcon, CurrencyDollarIcon, CameraIcon, XIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
@@ -31,6 +31,7 @@ import type { Service, Promo, Customer, Transaction } from '@/lib/types';
 import { calcItemPrice, calcRawTotal, findPromo, applyPromo } from '@/utils/pricing';
 import { PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
 import { ITEM_STATUS } from '@/lib/constants';
+import { toTitleCase } from '@/utils/text';
 
 const PAYMENT_METHODS = ['cash', 'gcash', 'card', 'bank_deposit'] as const;
 
@@ -96,6 +97,7 @@ export function NewTransactionForm() {
     },
   });
 
+  const qc = useQueryClient();
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
   const watchedItems = useWatch({ control, name: 'items' });
   const watchedPromoId = useWatch({ control, name: 'promoId' }) ?? 'none';
@@ -166,7 +168,7 @@ export function NewTransactionForm() {
   function handleRemovePhoto(idx: number) {
     URL.revokeObjectURL(pendingPhotosRef.current[idx].previewUrl);
     setPendingPhotos((prev) => prev.filter((_, i) => i !== idx));
-    if (idx < fields.length) {
+    if (idx < fields.length && fields.length > 1) {
       remove(idx);
     }
   }
@@ -230,7 +232,7 @@ export function NewTransactionForm() {
         items: allItems,
       });
     },
-    onSuccess: async (txn) => {
+    onSuccess: async (txn, variables) => {
       const photos = pendingPhotosRef.current;
 
       if (photos.length > 0) {
@@ -245,17 +247,17 @@ export function NewTransactionForm() {
         setIsUploadingPhotos(false);
       }
 
-      // Record initial payment if provided
-      const formData = pendingSubmitStable.current;
-      const payAmt = parseFloat(formData?.paymentAmount ?? '0');
+      // Record initial payment using mutation variables (reliable — no ref needed)
+      const payAmt = parseFloat(variables.paymentAmount ?? '0');
       let paidSoFar = 0;
-      if (payAmt > 0 && formData?.paymentMethod) {
+      if (payAmt > 0 && variables.paymentMethod) {
         await api.transactions.addPayment(txn.id, {
-          method: formData.paymentMethod,
+          method: variables.paymentMethod,
           amount: payAmt.toFixed(2),
-          ...(formData.paymentReference?.trim() ? { referenceNumber: formData.paymentReference.trim() } : {}),
+          ...(variables.paymentReference?.trim() ? { referenceNumber: variables.paymentReference.trim() } : {}),
         }).then(() => {
           paidSoFar = payAmt;
+          void qc.invalidateQueries({ queryKey: ['today-collections'] });
         }).catch(() => {
           toast.error('Transaction created but initial payment failed to record');
         });
@@ -557,7 +559,7 @@ export function NewTransactionForm() {
                     <SelectItem value="none">Self (default)</SelectItem>
                     {assignableUsers.map((u) => (
                       <SelectItem key={u.id} value={u.id}>
-                        {u.nickname ?? u.fullName ?? u.email}
+                        {u.nickname || u.fullName ? toTitleCase(u.nickname ?? u.fullName ?? '') : u.email}
                       </SelectItem>
                     ))}
                   </SelectContent>

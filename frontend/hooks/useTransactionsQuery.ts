@@ -150,6 +150,7 @@ export function useAddPaymentMutation(txnId: string, onSuccess?: () => void) {
       api.transactions.addPayment(numericTxnId, { method, amount, referenceNumber }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: transactionDetailKey(txnId) });
+      qc.invalidateQueries({ queryKey: ['today-collections'] });
       toast.success('Payment recorded');
       onSuccess?.();
     },
@@ -181,8 +182,9 @@ export function useDeleteTransactionMutation(onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.transactions.delete(id),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       qc.invalidateQueries({ queryKey: TRANSACTIONS_KEY });
+      qc.removeQueries({ queryKey: transactionDetailKey(String(id)) });
       toast.success('Transaction deleted');
       onSuccess?.();
     },
@@ -201,9 +203,10 @@ export function useRestoreTransactionMutation(onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.transactions.restore(id),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       qc.invalidateQueries({ queryKey: TRANSACTIONS_KEY });
       qc.invalidateQueries({ queryKey: ['transactions-deleted'] });
+      qc.removeQueries({ queryKey: transactionDetailKey(String(id)) });
       toast.success('Transaction restored');
       onSuccess?.();
     },

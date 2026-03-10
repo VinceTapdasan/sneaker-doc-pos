@@ -11,6 +11,13 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Spinner } from '@/components/ui/spinner';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { createTransactionColumns } from '@/columns/transactions-columns';
 import {
   useInfiniteTransactionsQuery,
@@ -19,7 +26,8 @@ import {
   useRestoreTransactionMutation,
 } from '@/hooks/useTransactionsQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
-import type { Transaction } from '@/lib/types';
+import { useBranchesQuery } from '@/hooks/useBranchesQuery';
+import type { Transaction, Branch } from '@/lib/types';
 
 export default function TransactionsPage() {
   const router = useRouter();
@@ -36,6 +44,7 @@ export default function TransactionsPage() {
   const [committedFrom, setCommittedFrom] = useState('');
   const [committedTo, setCommittedTo] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [branchFilter, setBranchFilter] = useState('all');
 
   const isDirty =
     draftSearch !== committedSearch ||
@@ -61,6 +70,7 @@ export default function TransactionsPage() {
     setCommittedFrom('');
     setCommittedTo('');
     setStatusFilter('all');
+    setBranchFilter('all');
   }
 
   const params: Record<string, string> = {};
@@ -68,9 +78,17 @@ export default function TransactionsPage() {
   if (committedSearch) params.search = committedSearch;
   if (committedFrom) params.from = committedFrom;
   if (committedTo) params.to = committedTo;
+  if (branchFilter !== 'all') params.branchId = branchFilter;
 
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
+  const isSuperadmin = currentUser?.userType === 'superadmin';
+
+  const { data: branches = [] } = useBranchesQuery(false);
+  const branchesMap = useMemo(
+    () => Object.fromEntries((branches as Branch[]).map((b) => [b.id, b.name])),
+    [branches],
+  );
 
   const query = useInfiniteTransactionsQuery(params);
   const transactions = useMemo(() => query.data?.pages.flat() ?? [], [query.data]);
@@ -87,11 +105,11 @@ export default function TransactionsPage() {
   );
 
   const columns = useMemo(
-    () => createTransactionColumns({ onDelete: setDeleteTarget }),
-    [],
+    () => createTransactionColumns({ onDelete: setDeleteTarget, isSuperadmin, branchesMap }),
+    [isSuperadmin, branchesMap],
   );
 
-  const hasActiveFilter = committedSearch || committedFrom || committedTo || statusFilter !== 'all';
+  const hasActiveFilter = committedSearch || committedFrom || committedTo || statusFilter !== 'all' || branchFilter !== 'all';
 
   return (
     <div>
@@ -141,6 +159,19 @@ export default function TransactionsPage() {
 
       {/* Search + Date filters — explicit submit */}
       <div className="flex flex-wrap items-center gap-2 mb-5">
+        {isSuperadmin && (branches as Branch[]).length > 0 && (
+          <Select value={branchFilter} onValueChange={setBranchFilter}>
+            <SelectTrigger className="h-8 text-sm w-40 border-zinc-200">
+              <SelectValue placeholder="All Branches" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Branches</SelectItem>
+              {(branches as Branch[]).map((b) => (
+                <SelectItem key={b.id} value={String(b.id)}>{toTitleCase(b.name)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <div className="relative">
           <MagnifyingGlassIcon size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
           <input
@@ -208,7 +239,7 @@ export default function TransactionsPage() {
             <div className="divide-y divide-zinc-100">
               {(deletedTxns as Transaction[]).map((txn) => (
                 <div key={txn.id} className="flex items-center gap-3 px-4 py-3">
-                  <div className="flex-1 min-w-0">
+                  <Link href={`/transactions/${txn.id}`} className="flex-1 min-w-0 hover:opacity-70 transition-opacity duration-150">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="font-mono text-xs text-zinc-400">#{txn.number}</span>
                       <span className="text-xs text-zinc-400">deleted {formatDate(txn.deletedAt)}</span>
@@ -216,7 +247,7 @@ export default function TransactionsPage() {
                     <p className="text-sm font-medium text-zinc-950 truncate">
                       {toTitleCase(txn.customerName) || '—'}
                     </p>
-                  </div>
+                  </Link>
                   <button
                     onClick={() => setRestoreTarget(txn)}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-md transition-colors shrink-0"

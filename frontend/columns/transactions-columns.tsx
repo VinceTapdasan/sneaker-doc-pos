@@ -10,9 +10,11 @@ import type { Transaction } from '@/lib/types';
 
 interface TransactionColumnsOptions {
   onDelete: (txn: Transaction) => void;
+  isSuperadmin?: boolean;
+  branchesMap?: Record<number, string>;
 }
 
-export const createTransactionColumns = ({ onDelete }: TransactionColumnsOptions): ColumnDef<Transaction>[] => [
+export const createTransactionColumns = ({ onDelete, isSuperadmin, branchesMap }: TransactionColumnsOptions): ColumnDef<Transaction>[] => [
   {
     accessorKey: 'number',
     header: '#',
@@ -45,6 +47,16 @@ export const createTransactionColumns = ({ onDelete }: TransactionColumnsOptions
     header: 'Status',
     cell: ({ row }) => <StatusBadge status={row.original.status} />,
   },
+  ...(isSuperadmin ? [{
+    id: 'branch',
+    header: 'Branch',
+    cell: ({ row }: { row: { original: Transaction } }) => {
+      const name = row.original.branchId && branchesMap
+        ? branchesMap[row.original.branchId]
+        : null;
+      return <span className="text-xs text-zinc-500">{name ? toTitleCase(name) : '—'}</span>;
+    },
+  } as ColumnDef<Transaction>] : []),
   {
     accessorKey: 'pickupDate',
     header: 'Pickup',

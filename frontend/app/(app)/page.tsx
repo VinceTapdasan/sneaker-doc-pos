@@ -46,7 +46,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useMonthlyExpensesQuery } from '@/hooks/useExpensesQuery';
-import { useDepositsQuery, useUpsertDepositMutation } from '@/hooks/useDepositsQuery';
+import { useUpsertDepositMutation } from '@/hooks/useDepositsQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { useBranchesQuery } from '@/hooks/useBranchesQuery';
 import { PageHeader } from '@/components/ui/page-header';
@@ -111,7 +111,7 @@ function StatCard({ label, href, value, mono, loading, icon: Icon, iconClass, ic
         </div>
       </div>
       {loading ? (
-        <div className="h-7 w-24 bg-zinc-100 rounded animate-pulse" />
+        <div className="h-7 w-24 bg-zinc-200 rounded animate-pulse" />
       ) : (
         <p className={`text-lg md:text-2xl font-semibold text-zinc-950 truncate ${mono ? 'font-mono' : ''}`}>
           {value}
@@ -148,11 +148,10 @@ export default function DashboardPage() {
   const { data: recentTxns = [] } = useRecentTransactionsQuery(20);
   const { data: upcomingPickups = [] } = useUpcomingPickupsQuery();
   const { data: expenses = [], isLoading: expensesLoading } = useMonthlyExpensesQuery(year, month, { enabled: isAdmin });
-  useCollectionsSummaryQuery(year, month, {
+  const { data: collectionsData, isLoading: collectionsLoading } = useCollectionsSummaryQuery(year, month, {
     branchId,
     enabled: isAdmin,
   });
-  const { data: depositsData, isLoading: depositsLoading } = useDepositsQuery(year, month, branchId);
   const upsertDepositMut = useUpsertDepositMutation(year, month, branchId);
   const { data: todayCollections = [] } = useTodayCollectionsQuery();
 
@@ -286,7 +285,7 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-zinc-400">Transactions</span>
               </div>
               {reportLoading ? (
-                <div className="h-9 w-12 bg-zinc-100 rounded animate-pulse" />
+                <div className="h-9 w-12 bg-zinc-200 rounded animate-pulse" />
               ) : (
                 <p className="text-3xl font-semibold text-zinc-950">{filtered.length}</p>
               )}
@@ -299,7 +298,7 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-zinc-400">Total Revenue</span>
               </div>
               {reportLoading ? (
-                <div className="h-9 w-36 bg-zinc-100 rounded animate-pulse mb-3" />
+                <div className="h-9 w-36 bg-zinc-200 rounded animate-pulse mb-3" />
               ) : (
                 <>
                   <p className="text-3xl font-mono font-semibold text-zinc-950 mb-3">
@@ -338,7 +337,7 @@ export default function DashboardPage() {
                 )}
               </div>
               {reportLoading || expensesLoading ? (
-                <div className="h-9 w-28 bg-zinc-100 rounded animate-pulse" />
+                <div className="h-9 w-28 bg-zinc-200 rounded animate-pulse" />
               ) : (
                 <>
                   <p className={`text-3xl font-mono font-semibold mb-3 ${monthlyNet >= 0 ? 'text-zinc-950' : 'text-red-500'}`}>
@@ -360,12 +359,14 @@ export default function DashboardPage() {
             <div className="flex flex-col sm:flex-row divide-y sm:divide-y-0 sm:divide-x divide-zinc-100">
               {METHOD_ORDER.map((key) => {
                 const config = PAYMENT_METHOD_CONFIG[key];
-                const amount = parseFloat(depositsData?.[key] ?? '0');
+                // Backend returns pre-computed net GCash and bank_deposit total in collectionsData
+                const amount = parseFloat(collectionsData?.[key] ?? '0');
+                const isBankDeposit = key === 'bank_deposit';
                 return (
                   <button
                     key={key}
-                    onClick={() => setHistoryDialog({ open: true, method: key })}
-                    className="group flex-1 px-5 py-4 text-left hover:bg-zinc-50/60 transition-colors duration-150"
+                    onClick={() => isBankDeposit ? setHistoryDialog({ open: true, method: key }) : undefined}
+                    className={`group flex-1 px-5 py-4 text-left transition-colors duration-150 ${isBankDeposit ? 'hover:bg-zinc-50/60 cursor-pointer' : 'cursor-default'}`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-1.5">
@@ -386,8 +387,8 @@ export default function DashboardPage() {
                         </button>
                       )}
                     </div>
-                    {depositsLoading ? (
-                      <div className="h-5 w-16 bg-zinc-100 rounded animate-pulse" />
+                    {collectionsLoading ? (
+                      <div className="h-5 w-16 bg-zinc-200 rounded animate-pulse" />
                     ) : (
                       <p className={`font-mono text-lg font-semibold ${amount > 0 ? 'text-zinc-950' : 'text-zinc-300'}`}>
                         {formatPeso(amount)}
@@ -536,7 +537,6 @@ export default function DashboardPage() {
         month={month}
         monthLabel={month === 0 ? `${year} Overall` : `${MONTHS[(month || 1) - 1]} ${year}`}
         branchId={branchId}
-        initialMethod={historyDialog.method}
       />
 
       {/* Add deposit dialog */}
@@ -571,15 +571,15 @@ export default function DashboardPage() {
               />
               {depositError && <p className="text-xs text-red-500">{depositError}</p>}
             </div>
-            {depositsData && parseFloat(depositsData['gcash'] ?? '0') > 0 && (
+            {collectionsData && parseFloat(collectionsData['gcash'] ?? '0') > 0 && (
               <p className="text-xs text-zinc-400">
-                GCash balance: <span className="font-mono">{formatPeso(depositsData['gcash'])}</span>
+                GCash balance: <span className="font-mono">{formatPeso(collectionsData['gcash'])}</span>
                 {' '}— will be reduced by this amount.
               </p>
             )}
-            {depositsData && parseFloat(depositsData['bank_deposit'] ?? '0') > 0 && (
+            {collectionsData && parseFloat(collectionsData['bank_deposit'] ?? '0') > 0 && (
               <p className="text-xs text-zinc-400">
-                Current bank deposit total: <span className="font-mono">{formatPeso(depositsData['bank_deposit'])}</span>
+                Current bank deposit total: <span className="font-mono">{formatPeso(collectionsData['bank_deposit'])}</span>
                 {' '}— this amount will be added to it.
               </p>
             )}

@@ -27,13 +27,21 @@ export class ExpensesController {
     private readonly usersService: UsersService,
   ) {}
 
+  // superadmin always sees all; everyone else is scoped to their branch
+  private scopedBranchId(dbUser: { userType: string; branchId?: number | null } | null): number | undefined {
+    if (!dbUser) return undefined;
+    if (dbUser.userType === 'superadmin') return undefined;
+    return dbUser.branchId ?? undefined;
+  }
+
   // Requires auth — financial data must not be public
   @UseGuards(SupabaseAuthGuard)
   @Get()
   async findByDate(@Query('date') date: string, @Req() req: AuthedRequest) {
     const dbUser = await this.usersService.findById(req.user.id);
     const isStaff = dbUser?.userType === 'staff';
-    return this.expensesService.findByDate(date, isStaff ? req.user.id : undefined);
+    const branchId = this.scopedBranchId(dbUser);
+    return this.expensesService.findByDate(date, isStaff ? req.user.id : undefined, isStaff ? undefined : branchId);
   }
 
   @UseGuards(SupabaseAuthGuard)
@@ -41,42 +49,56 @@ export class ExpensesController {
   async summary(@Query('date') date: string, @Req() req: AuthedRequest) {
     const dbUser = await this.usersService.findById(req.user.id);
     const isStaff = dbUser?.userType === 'staff';
-    return this.expensesService.summary(date, isStaff ? req.user.id : undefined);
+    const branchId = this.scopedBranchId(dbUser);
+    return this.expensesService.summary(date, isStaff ? req.user.id : undefined, isStaff ? undefined : branchId);
   }
 
   @UseGuards(SupabaseAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   @Get('monthly')
-  findByMonth(@Query('year') year: string, @Query('month') month: string) {
+  async findByMonth(
+    @Req() req: AuthedRequest,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    const dbUser = await this.usersService.findById(req.user.id);
+    const branchId = this.scopedBranchId(dbUser);
     return this.expensesService.findByMonth(
       parseInt(year, 10),
       parseInt(month, 10),
+      branchId,
     );
   }
 
   // Any authenticated user can log an expense (staff via POS)
   @UseGuards(SupabaseAuthGuard)
   @Post()
-  create(@Body() dto: CreateExpenseDto, @Req() req: AuthedRequest) {
-    return this.expensesService.create(dto, 'pos', req.user?.id);
+  async create(@Body() dto: CreateExpenseDto, @Req() req: AuthedRequest) {
+    const dbUser = await this.usersService.findById(req.user.id);
+    const branchId = dbUser?.branchId ?? undefined;
+    return this.expensesService.create(dto, 'pos', req.user?.id, branchId);
   }
 
   // Admin-only: edit or delete existing expenses
   @UseGuards(SupabaseAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   @Patch(':id')
-  update(
+  async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateExpenseDto,
     @Req() req: AuthedRequest,
   ) {
-    return this.expensesService.update(id, dto, req.user?.id);
+    const dbUser = await this.usersService.findById(req.user.id);
+    const branchId = dbUser?.branchId ?? undefined;
+    return this.expensesService.update(id, dto, req.user?.id, branchId);
   }
 
   @UseGuards(SupabaseAuthGuard, RolesGuard)
   @Roles('admin', 'superadmin')
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest) {
-    return this.expensesService.remove(id, req.user?.id);
+  async remove(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest) {
+    const dbUser = await this.usersService.findById(req.user.id);
+    const branchId = dbUser?.branchId ?? undefined;
+    return this.expensesService.remove(id, req.user?.id, branchId);
   }
 }

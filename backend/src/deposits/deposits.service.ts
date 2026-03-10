@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import { AuditService } from '../audit/audit.service';
 import { auditLog, deposits, users } from '../db/schema';
@@ -49,7 +49,7 @@ export class DepositsService {
           eq(deposits.year, year),
           eq(deposits.month, month),
           eq(deposits.method, method),
-          branchId ? eq(deposits.branchId, branchId) : eq(deposits.branchId, null as unknown as number),
+          branchId ? eq(deposits.branchId, branchId) : isNull(deposits.branchId),
         ),
       );
 
