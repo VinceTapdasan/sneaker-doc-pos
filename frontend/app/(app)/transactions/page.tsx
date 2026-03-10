@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MagnifyingGlassIcon, PlusIcon, XIcon, TrashIcon, ArrowCounterClockwiseIcon } from '@phosphor-icons/react';
+import { MagnifyingGlassIcon, PlusIcon, XIcon, ArrowCounterClockwiseIcon } from '@phosphor-icons/react';
 import { STATUS_LABELS, formatDate, cn } from '@/lib/utils';
 import { toTitleCase } from '@/utils/text';
 import { PageHeader } from '@/components/ui/page-header';
@@ -19,18 +19,11 @@ import {
   useRestoreTransactionMutation,
 } from '@/hooks/useTransactionsQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import type { Transaction } from '@/lib/types';
 
 export default function TransactionsPage() {
   const router = useRouter();
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
-  const [trashOpen, setTrashOpen] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<Transaction | null>(null);
 
   // Draft state — what the user is typing/selecting
@@ -106,25 +99,12 @@ export default function TransactionsPage() {
         title="Transactions"
         subtitle={`${transactions.length} loaded`}
         action={(
-          <div className="flex items-center gap-2">
-            {isAdmin && (
-              <Button variant="ghost" size="sm" onClick={() => setTrashOpen(true)}>
-                <TrashIcon size={14} />
-                Trash
-                {(deletedTxns as Transaction[]).length > 0 && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-semibold">
-                    {(deletedTxns as Transaction[]).length}
-                  </span>
-                )}
-              </Button>
-            )}
-            <Link href="/transactions/new">
-              <Button>
-                <PlusIcon size={14} weight="bold" />
-                New Transaction
-              </Button>
-            </Link>
-          </div>
+          <Link href="/transactions/new">
+            <Button>
+              <PlusIcon size={14} weight="bold" />
+              New Transaction
+            </Button>
+          </Link>
         )}
       />
 
@@ -143,6 +123,20 @@ export default function TransactionsPage() {
             {s !== 'all' && statusCounts[s] ? <span className="ml-1.5 opacity-60">{statusCounts[s]}</span> : null}
           </button>
         ))}
+        {isAdmin && (
+          <button
+            onClick={() => setStatusFilter('trash')}
+            className={cn(
+              'px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150',
+              statusFilter === 'trash' ? 'bg-red-600 text-white' : 'text-zinc-400 hover:text-zinc-950 hover:bg-zinc-100',
+            )}
+          >
+            Trash
+            {(deletedTxns as Transaction[]).length > 0 && (
+              <span className="ml-1.5 opacity-70">{(deletedTxns as Transaction[]).length}</span>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Search + Date filters — explicit submit */}
@@ -204,61 +198,20 @@ export default function TransactionsPage() {
         )}
       </div>
 
-      <DataTable
-        columns={columns}
-        data={transactions}
-        isLoading={query.isLoading}
-        loadingRows={8}
-        hidePagination
-        emptyTitle="No transactions"
-        emptyDescription={
-          hasActiveFilter ? 'Try adjusting your filters.' : 'Create the first transaction to get started.'
-        }
-        onRowClick={(txn) => router.push(`/transactions/${txn.id}`)}
-      />
-
-      {query.hasNextPage && (
-        <div className="flex justify-center mt-4">
-          <button
-            onClick={() => query.fetchNextPage()}
-            disabled={query.isFetchingNextPage}
-            className="px-4 py-2 text-sm text-zinc-600 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50 hover:text-zinc-950 transition-colors disabled:opacity-50 disabled:pointer-events-none"
-          >
-            {query.isFetchingNextPage ? 'Loading...' : 'Load more'}
-          </button>
-        </div>
-      )}
-
-      {!query.isLoading && !query.hasNextPage && transactions.length > 0 && (
-        <p className="text-center mt-4 text-xs text-zinc-400">All {transactions.length} results loaded</p>
-      )}
-
-      <ConfirmDialog
-        open={!!deleteTarget}
-        title="Delete transaction?"
-        description={`Delete #${deleteTarget?.number}? It will be moved to trash and can be restored by an admin.`}
-        onConfirm={() => { if (deleteTarget) deleteMut.mutate(deleteTarget.id); setDeleteTarget(null); }}
-        onCancel={() => setDeleteTarget(null)}
-        loading={deleteMut.isPending}
-      />
-
-      <Dialog open={trashOpen} onOpenChange={setTrashOpen}>
-        <DialogContent className="bg-white sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-base">Deleted Transactions</DialogTitle>
-          </DialogHeader>
+      {statusFilter === 'trash' ? (
+        <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
           {deletedLoading ? (
-            <div className="flex justify-center py-8"><Spinner /></div>
+            <div className="flex justify-center py-12"><Spinner /></div>
           ) : (deletedTxns as Transaction[]).length === 0 ? (
-            <p className="text-sm text-zinc-400 text-center py-8">Trash is empty.</p>
+            <p className="text-sm text-zinc-400 text-center py-12">Trash is empty.</p>
           ) : (
-            <div className="divide-y divide-zinc-100 -mx-1 max-h-[60vh] overflow-y-auto">
+            <div className="divide-y divide-zinc-100">
               {(deletedTxns as Transaction[]).map((txn) => (
-                <div key={txn.id} className="flex items-center gap-3 px-2 py-3">
+                <div key={txn.id} className="flex items-center gap-3 px-4 py-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 mb-0.5">
                       <span className="font-mono text-xs text-zinc-400">#{txn.number}</span>
-                      <span className="text-xs text-zinc-400">{formatDate(txn.deletedAt)}</span>
+                      <span className="text-xs text-zinc-400">deleted {formatDate(txn.deletedAt)}</span>
                     </div>
                     <p className="text-sm font-medium text-zinc-950 truncate">
                       {toTitleCase(txn.customerName) || '—'}
@@ -275,8 +228,48 @@ export default function TransactionsPage() {
               ))}
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </div>
+      ) : (
+        <>
+          <DataTable
+            columns={columns}
+            data={transactions}
+            isLoading={query.isLoading}
+            loadingRows={8}
+            hidePagination
+            emptyTitle="No transactions"
+            emptyDescription={
+              hasActiveFilter ? 'Try adjusting your filters.' : 'Create the first transaction to get started.'
+            }
+            onRowClick={(txn) => router.push(`/transactions/${txn.id}`)}
+          />
+
+          {query.hasNextPage && (
+            <div className="flex justify-center mt-4">
+              <button
+                onClick={() => query.fetchNextPage()}
+                disabled={query.isFetchingNextPage}
+                className="px-4 py-2 text-sm text-zinc-600 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50 hover:text-zinc-950 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              >
+                {query.isFetchingNextPage ? 'Loading...' : 'Load more'}
+              </button>
+            </div>
+          )}
+
+          {!query.isLoading && !query.hasNextPage && transactions.length > 0 && (
+            <p className="text-center mt-4 text-xs text-zinc-400">All {transactions.length} results loaded</p>
+          )}
+        </>
+      )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete transaction?"
+        description={`Delete #${deleteTarget?.number}? It will be moved to trash and can be restored by an admin.`}
+        onConfirm={() => { if (deleteTarget) deleteMut.mutate(deleteTarget.id); setDeleteTarget(null); }}
+        onCancel={() => setDeleteTarget(null)}
+        loading={deleteMut.isPending}
+      />
 
       <ConfirmDialog
         open={!!restoreTarget}

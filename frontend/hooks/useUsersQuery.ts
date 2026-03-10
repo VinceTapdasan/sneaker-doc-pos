@@ -16,6 +16,14 @@ export function useUsersQuery() {
   });
 }
 
+export function useUserQuery(id: string) {
+  return useQuery({
+    queryKey: ['users', id],
+    queryFn: () => api.users.get(id),
+    enabled: !!id,
+  });
+}
+
 export function useAssignableUsersQuery() {
   return useQuery({
     queryKey: ASSIGNABLE_KEY,
@@ -66,8 +74,9 @@ export function useUpdateUserProfileMutation(onSuccess?: () => void) {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<AppUser> }) =>
       api.users.updateProfile(id, data),
-    onSuccess: () => {
+    onSuccess: (_, { id }) => {
       void qc.invalidateQueries({ queryKey: USERS_KEY });
+      void qc.invalidateQueries({ queryKey: ['users', id] });
       toast.success('Profile updated');
       onSuccess?.();
     },
