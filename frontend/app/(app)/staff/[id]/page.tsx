@@ -45,8 +45,17 @@ const ROLE_STYLES: Record<string, string> = {
 const BUCKET = 'staff-documents';
 
 function initials(user: AppUser) {
-  const name = user.fullName ?? user.nickname ?? user.email;
-  return name.slice(0, 2).toUpperCase();
+  const name = user.fullName ?? user.nickname;
+  if (name) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return user.email.slice(0, 2).toUpperCase();
+}
+
+function displayName(user: AppUser) {
+  return user.fullName ?? user.nickname ?? null;
 }
 
 export default function StaffProfilePage() {
@@ -173,9 +182,11 @@ export default function StaffProfilePage() {
         </div>
         <div className="flex-1 min-w-0">
           <h1 className="text-lg font-semibold text-zinc-950 truncate">
-            {user.fullName ?? user.nickname ?? user.email}
+            {displayName(user) ?? user.email}
           </h1>
-          <p className="text-sm text-zinc-400 truncate">{user.email}</p>
+          {displayName(user) && user.fullName && user.nickname && (
+            <p className="text-sm text-zinc-400 truncate">{user.nickname}</p>
+          )}
         </div>
         <span className={cn(
           'shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide',
@@ -232,6 +243,12 @@ export default function StaffProfilePage() {
           {section === 'profile' && (
             <div className="bg-white border border-zinc-200 rounded-lg p-6 space-y-4">
               <h2 className="text-sm font-semibold text-zinc-950 mb-1">Profile</h2>
+              <Input
+                label="Email"
+                value={user.email}
+                readOnly
+                className="bg-zinc-50 text-zinc-500"
+              />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Full Name"
