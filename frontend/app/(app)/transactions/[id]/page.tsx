@@ -71,7 +71,6 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
   const [smsSending, setSmsSending] = useState(false);
-  const [_smsConfirmed, setSmsConfirmed] = useState(false);
 
   const txnPhotoFileRef = useRef<HTMLInputElement>(null);
   const txnPhotoCameraRef = useRef<HTMLInputElement>(null);
@@ -163,14 +162,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
   function handleSendPickupSms() {
     if (!txn) return;
-    setSmsConfirmed(false);
     setSmsSending(false);
     setSmsDialogOpen(true);
   }
 
   async function confirmSendSms() {
     if (!txn) return;
-    setSmsConfirmed(true);
     setSmsSending(true);
     try {
       await api.transactions.sendPickupReadySms(txn.id);
@@ -181,7 +178,6 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       toast.error('Failed to send SMS. Please try again.');
     } finally {
       setSmsSending(false);
-      setSmsConfirmed(false);
     }
   }
 
