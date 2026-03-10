@@ -435,7 +435,7 @@ export class TransactionsService {
       action = 'assign';
       let assignedStaff: { fullName: string | null; email: string } | null = null;
       if (dto.staffId) {
-        assignedStaff = await this.users.findById(dto.staffId);
+        assignedStaff = await this.users.findById(dto.staffId) as { fullName: string | null; email: string } | null;
       }
       auditDetails = {
         from: existing.staffId ?? null,

@@ -28,10 +28,10 @@ export class ExpensesController {
   ) {}
 
   // superadmin always sees all; everyone else is scoped to their branch
-  private scopedBranchId(dbUser: { userType: string; branchId?: number | null } | null): number | undefined {
+  private scopedBranchId(dbUser: Record<string, unknown> | null | undefined): number | undefined {
     if (!dbUser) return undefined;
-    if (dbUser.userType === 'superadmin') return undefined;
-    return dbUser.branchId ?? undefined;
+    if (dbUser['userType'] === 'superadmin') return undefined;
+    return (dbUser['branchId'] as number | null | undefined) ?? undefined;
   }
 
   // Requires auth — financial data must not be public
