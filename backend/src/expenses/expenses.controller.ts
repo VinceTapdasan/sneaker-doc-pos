@@ -38,7 +38,7 @@ export class ExpensesController {
   @UseGuards(SupabaseAuthGuard)
   @Get()
   async findByDate(@Query('date') date: string, @Req() req: AuthedRequest) {
-    const dbUser = await this.usersService.findById(req.user.id);
+    const dbUser = await this.usersService.findById(req.user.id) as { userType: string; branchId?: number | null } | null;
     const isStaff = dbUser?.userType === 'staff';
     const branchId = this.scopedBranchId(dbUser);
     return this.expensesService.findByDate(date, isStaff ? req.user.id : undefined, isStaff ? undefined : branchId);
@@ -47,7 +47,7 @@ export class ExpensesController {
   @UseGuards(SupabaseAuthGuard)
   @Get('summary')
   async summary(@Query('date') date: string, @Req() req: AuthedRequest) {
-    const dbUser = await this.usersService.findById(req.user.id);
+    const dbUser = await this.usersService.findById(req.user.id) as { userType: string; branchId?: number | null } | null;
     const isStaff = dbUser?.userType === 'staff';
     const branchId = this.scopedBranchId(dbUser);
     return this.expensesService.summary(date, isStaff ? req.user.id : undefined, isStaff ? undefined : branchId);
