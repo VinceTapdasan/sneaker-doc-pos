@@ -78,6 +78,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const pendingPhotoTypeRef = useRef<'before' | 'after' | null>(null);
 
   const [rescheduleValue, setRescheduleValue] = useState('');
+  const [rescheduleConfirmOpen, setRescheduleConfirmOpen] = useState(false);
   const [noteValue, setNoteValue] = useState('');
   const [pendingStaffId, setPendingStaffId] = useState<string | null>(null);
   const initializedRef = useRef<string | null>(null);
@@ -173,6 +174,24 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     if (!txn) return;
     setSmsConfirmed(true);
     setSmsSending(true);
+    try {
+      await api.transactions.sendPickupReadySms(txn.id);
+      setSmsDialogOpen(false);
+      toast.success(`SMS sent to ${txn.customerPhone}`);
+    } catch {
+      setSmsDialogOpen(false);
+      toast.error('Failed to send SMS. Please try again.');
+    } finally {
+      setSmsSending(false);
+      setSmsConfirmed(false);
+    }
+  }
+
+  async function autoSendSms() {
+    if (!txn?.customerPhone) return;
+    setSmsDialogOpen(true);
+    setSmsSending(true);
+    setSmsConfirmed(true);
     try {
       await api.transactions.sendPickupReadySms(txn.id);
       setSmsDialogOpen(false);
@@ -369,7 +388,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                       size="sm"
                       variant="dark"
                       disabled={!rescheduleValue || updateTxnMut.isPending}
-                      onClick={() => updateTxnMut.mutate({ newPickupDate: rescheduleValue })}
+                      onClick={() => setRescheduleConfirmOpen(true)}
                     >
                       {updateTxnMut.isPending ? <Spinner /> : 'Save'}
                     </Button>
@@ -910,6 +929,25 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
           updateItemStatusMut.mutate({ itemId: pendingItemChange.itemId, status: pendingItemChange.newStatus });
         }}
         onCancel={() => setPendingItemChange(null)}
+      />
+
+      <ConfirmDialog
+        open={rescheduleConfirmOpen}
+        title="Save new schedule?"
+        description={txn.customerPhone
+          ? `Update the pickup date to ${rescheduleValue ? formatDate(rescheduleValue) : '—'}? An SMS will be sent to ${txn.customerPhone} notifying the customer of the new date.`
+          : `Update the pickup date to ${rescheduleValue ? formatDate(rescheduleValue) : '—'}?`}
+        confirmLabel={txn.customerPhone ? 'Save & Send SMS' : 'Save'}
+        confirmVariant="dark"
+        onConfirm={() => {
+          setRescheduleConfirmOpen(false);
+          updateTxnMut.mutate(
+            { newPickupDate: rescheduleValue },
+            { onSuccess: () => { if (txn.customerPhone) void autoSendSms(); } },
+          );
+        }}
+        onCancel={() => setRescheduleConfirmOpen(false)}
+        loading={updateTxnMut.isPending}
       />
 
       <ConfirmDialog
