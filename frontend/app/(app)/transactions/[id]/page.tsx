@@ -775,16 +775,21 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               />
               <p className="text-xs font-mono text-zinc-400">#{txn.number}</p>
             </div>
-            {txn.customerPhone && (
-              <button
-                type="button"
-                onClick={handleSendPickupSms}
-                className="mt-4 flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150"
-              >
-                <PaperPlaneTiltIcon size={13} />
-                Send SMS — Ready for Pickup
-              </button>
-            )}
+            {txn.customerPhone && (() => {
+              const hasDoneItems = (txn.items ?? []).some((i) => i.status === 'done');
+              return (
+                <button
+                  type="button"
+                  onClick={handleSendPickupSms}
+                  disabled={!hasDoneItems}
+                  title={!hasDoneItems ? 'No items are marked as done yet' : undefined}
+                  className="mt-4 flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <PaperPlaneTiltIcon size={13} />
+                  Send SMS — Ready for Pickup
+                </button>
+              );
+            })()}
           </div>
 
           {/* SMS confirmation + sending dialog */}
