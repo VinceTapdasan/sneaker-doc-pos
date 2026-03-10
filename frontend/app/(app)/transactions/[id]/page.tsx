@@ -79,6 +79,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
   const [rescheduleValue, setRescheduleValue] = useState('');
   const [noteValue, setNoteValue] = useState('');
+  const [pendingStaffId, setPendingStaffId] = useState<string | null>(null);
   const initializedRef = useRef<string | null>(null);
 
   const { data: currentUser } = useCurrentUserQuery();
@@ -723,9 +724,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               </h2>
               <Select
                 value={txn.staffId ?? 'unassigned'}
-                onValueChange={(v) => {
-                  updateTxnMut.mutate({ staffId: v === 'unassigned' ? null : v });
-                }}
+                onValueChange={(v) => setPendingStaffId(v)}
                 disabled={txnLocked || updateTxnMut.isPending}
               >
                 <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
@@ -997,6 +996,26 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
           </div>
         </div>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!pendingStaffId}
+        title="Assign staff?"
+        description={(() => {
+          if (!pendingStaffId) return '';
+          if (pendingStaffId === 'unassigned') return 'Remove the current staff assignment from this transaction?';
+          const staff = assignableUsers.find((u) => u.id === pendingStaffId);
+          const name = staff ? toTitleCase(staff.nickname ?? staff.fullName ?? '') || staff.email : 'this staff member';
+          return `Assign ${name} to transaction #${txn.number}?`;
+        })()}
+        confirmLabel="Assign"
+        confirmVariant="dark"
+        onConfirm={() => {
+          updateTxnMut.mutate({ staffId: pendingStaffId === 'unassigned' ? null : pendingStaffId });
+          setPendingStaffId(null);
+        }}
+        onCancel={() => setPendingStaffId(null)}
+        loading={updateTxnMut.isPending}
+      />
     </div>
   );
 }
