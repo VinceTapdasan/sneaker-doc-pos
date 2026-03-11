@@ -17,6 +17,7 @@ const AUDIT_TYPE_LABELS: Record<string, string> = {
   PAYMENT_ADDED: 'Payment Added',
   EXPENSE_CREATED: 'Expense Logged',
   SERVICE_UPDATED: 'Service Updated',
+  SMS_SENT: 'SMS Sent',
 };
 
 const AUDIT_TYPE_STYLES: Record<string, string> = {
@@ -31,6 +32,7 @@ const AUDIT_TYPE_STYLES: Record<string, string> = {
   TRANSACTION_UPDATED: 'bg-zinc-100 text-zinc-600',
   TRANSACTION_RESTORED: 'bg-emerald-50 text-emerald-700',
   SERVICE_UPDATED: 'bg-zinc-100 text-zinc-600',
+  SMS_SENT: 'bg-sky-50 text-sky-700',
 };
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -126,16 +128,15 @@ export const auditColumns: ColumnDef<AuditEntry>[] = [
     header: 'By',
     cell: ({ row }) => {
       const email = row.original.performedByEmail;
+      const fullName = row.original.performedByFullName;
       if (!email) {
         return <span className="text-xs text-zinc-400">System</span>;
       }
       const [user, domain] = email.split('@');
       return (
         <div>
-          <span className="text-sm text-zinc-700">{user}</span>
-          {domain && (
-            <span className="block text-xs text-zinc-400">@{domain}</span>
-          )}
+          <span className="text-sm text-zinc-700">{fullName ? fullName : user}</span>
+          <span className="block text-xs text-zinc-400">@{domain ?? '—'}</span>
         </div>
       );
     },

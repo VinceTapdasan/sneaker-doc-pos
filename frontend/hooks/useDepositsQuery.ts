@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 
 export function useDepositsQuery(year: number, month: number, branchId?: number) {
@@ -27,5 +28,6 @@ export function useUpsertDepositMutation(year: number, month: number, branchId?:
       void qc.invalidateQueries({ queryKey: ['deposits-audit'] });
       void qc.invalidateQueries({ queryKey: ['collections-summary'] });
     },
+    onError: (err: Error) => toast.error('Failed to save deposit', { description: err.message }),
   });
 }

@@ -45,6 +45,7 @@ export class AuditService {
       .select({
         ...getTableColumns(auditLog),
         performedByEmail: users.email,
+        performedByFullName: users.fullName,
       })
       .from(auditLog)
       .leftJoin(users, eq(auditLog.performedBy, users.id))

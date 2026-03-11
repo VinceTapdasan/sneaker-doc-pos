@@ -159,6 +159,7 @@ export interface AuditEntry {
   source: string | null;
   performedBy: string | null;
   performedByEmail: string | null;
+  performedByFullName: string | null;
   branchId: number | null;
   details: Record<string, unknown> | null;
 }

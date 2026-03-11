@@ -178,8 +178,8 @@ export class TransactionsController {
 
   @UseGuards(SupabaseAuthGuard)
   @Post(':id/sms/pickup-ready')
-  sendPickupReadySms(@Param('id', ParseIntPipe) id: number) {
-    return this.transactionsService.sendPickupReadySms(id);
+  sendPickupReadySms(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest) {
+    return this.transactionsService.sendPickupReadySms(id, req.user?.id);
   }
 
   @UseGuards(SupabaseAuthGuard)

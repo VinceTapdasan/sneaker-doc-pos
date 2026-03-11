@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { eq, and, inArray, count } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import { AuditService } from '../audit/audit.service';
-import { branches } from '../db/schema';
+import { branches, transactions } from '../db/schema';
 import { CreateBranchDto } from './dto/create-branch.dto';
 
 @Injectable()
@@ -66,6 +66,24 @@ export class BranchesService {
     performedBy?: string,
   ) {
     const existing = await this.findOne(id);
+
+    if (dto.isActive === false) {
+      const [{ value }] = await this.drizzle.db
+        .select({ value: count() })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.branchId, id),
+            inArray(transactions.status, ['pending', 'in_progress']),
+          ),
+        );
+
+      if (value > 0) {
+        throw new BadRequestException(
+          `Cannot deactivate branch "${existing.name}" — it has ${value} active transaction${value !== 1 ? 's' : ''} (pending or in progress). Resolve them first.`,
+        );
+      }
+    }
     const [updated] = await this.drizzle.db
       .update(branches)
       .set(dto)

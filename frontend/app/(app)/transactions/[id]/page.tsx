@@ -77,7 +77,9 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const pendingPhotoTypeRef = useRef<'before' | 'after' | null>(null);
 
   const [rescheduleValue, setRescheduleValue] = useState('');
+  const [rescheduleConfirmOpen, setRescheduleConfirmOpen] = useState(false);
   const [noteValue, setNoteValue] = useState('');
+  const [pendingStaffId, setPendingStaffId] = useState<string | null>(null);
   const initializedRef = useRef<string | null>(null);
 
   const { data: currentUser } = useCurrentUserQuery();
@@ -178,6 +180,24 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       toast.error('Failed to send SMS. Please try again.');
     } finally {
       setSmsSending(false);
+    }
+  }
+
+  async function autoSendSms() {
+    if (!txn?.customerPhone) return;
+    setSmsDialogOpen(true);
+    setSmsSending(true);
+    setSmsConfirmed(true);
+    try {
+      await api.transactions.sendPickupReadySms(txn.id);
+      setSmsDialogOpen(false);
+      toast.success(`SMS sent to ${txn.customerPhone}`);
+    } catch {
+      setSmsDialogOpen(false);
+      toast.error('Failed to send SMS. Please try again.');
+    } finally {
+      setSmsSending(false);
+      setSmsConfirmed(false);
     }
   }
 
@@ -321,8 +341,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               )}
               {txn.staffNickname && (
                 <div>
-                  <p className="text-xs text-zinc-400">Staff</p>
-                  <p className="text-sm text-zinc-700">{txn.staffNickname}</p>
+                  <p className="text-xs text-zinc-400">Assigned To</p>
+                  <p className="text-sm text-zinc-700">{toTitleCase(txn.staffNickname)}</p>
                 </div>
               )}
               {txn.newPickupDate && (
@@ -364,7 +384,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                       size="sm"
                       variant="dark"
                       disabled={!rescheduleValue || updateTxnMut.isPending}
-                      onClick={() => updateTxnMut.mutate({ newPickupDate: rescheduleValue })}
+                      onClick={() => setRescheduleConfirmOpen(true)}
                     >
                       {updateTxnMut.isPending ? <Spinner /> : 'Save'}
                     </Button>
@@ -719,9 +739,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               </h2>
               <Select
                 value={txn.staffId ?? 'unassigned'}
-                onValueChange={(v) => {
-                  updateTxnMut.mutate({ staffId: v === 'unassigned' ? null : v });
-                }}
+                onValueChange={(v) => setPendingStaffId(v)}
                 disabled={txnLocked || updateTxnMut.isPending}
               >
                 <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
@@ -753,16 +771,21 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               />
               <p className="text-xs font-mono text-zinc-400">#{txn.number}</p>
             </div>
-            {txn.customerPhone && (
-              <button
-                type="button"
-                onClick={handleSendPickupSms}
-                className="mt-4 flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150"
-              >
-                <PaperPlaneTiltIcon size={13} />
-                Send SMS — Ready for Pickup
-              </button>
-            )}
+            {txn.customerPhone && (() => {
+              const hasDoneItems = (txn.items ?? []).some((i) => i.status === 'done');
+              return (
+                <button
+                  type="button"
+                  onClick={handleSendPickupSms}
+                  disabled={!hasDoneItems}
+                  title={!hasDoneItems ? 'No items are marked as done yet' : undefined}
+                  className="mt-4 flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <PaperPlaneTiltIcon size={13} />
+                  Send SMS — Ready for Pickup
+                </button>
+              );
+            })()}
           </div>
 
           {/* SMS confirmation + sending dialog */}
@@ -788,7 +811,14 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                     {smsSending ? 'Sending SMS' : 'Send SMS — Ready for Pickup'}
                   </p>
                   <p className="text-xs text-zinc-400 mt-1">
-                    Notifying {txn.customerName ?? 'customer'} that their shoes are ready for pickup.
+                    {(() => {
+                      const doneItems = (txn.items ?? []).filter((i) => i.status === 'done');
+                      if (doneItems.length === 0) {
+                        return `Notifying ${txn.customerName ?? 'customer'} that their shoes are ready for pickup.`;
+                      }
+                      const names = doneItems.map((i) => i.shoeDescription ?? 'Item').join(', ');
+                      return `${doneItems.length} item${doneItems.length !== 1 ? 's' : ''} ready — ${names}`;
+                    })()}
                   </p>
                 </div>
                 {!smsSending && (
@@ -910,6 +940,27 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       />
 
       <ConfirmDialog
+        open={rescheduleConfirmOpen}
+        title="Save new schedule?"
+        description={txn.customerPhone
+          ? `Update the pickup date to ${rescheduleValue ? formatDate(rescheduleValue) : '—'}? An SMS will be sent to ${txn.customerPhone} notifying the customer of the new date.`
+          : `Update the pickup date to ${rescheduleValue ? formatDate(rescheduleValue) : '—'}?`}
+        confirmLabel={txn.customerPhone ? 'Save & Send SMS' : 'Save'}
+        confirmVariant="dark"
+        onConfirm={() => {
+          updateTxnMut.mutate(
+            { newPickupDate: rescheduleValue },
+            {
+              onSuccess: () => { setRescheduleConfirmOpen(false); if (txn.customerPhone) void autoSendSms(); },
+              onError: () => setRescheduleConfirmOpen(false),
+            },
+          );
+        }}
+        onCancel={() => { if (!updateTxnMut.isPending) setRescheduleConfirmOpen(false); }}
+        loading={updateTxnMut.isPending}
+      />
+
+      <ConfirmDialog
         open={deleteConfirmOpen}
         title="Delete transaction?"
         confirmLabel="Delete"
@@ -993,6 +1044,28 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
           </div>
         </div>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!pendingStaffId}
+        title="Assign staff?"
+        description={(() => {
+          if (!pendingStaffId) return '';
+          if (pendingStaffId === 'unassigned') return 'Remove the current staff assignment from this transaction?';
+          const staff = assignableUsers.find((u) => u.id === pendingStaffId);
+          const name = staff ? toTitleCase(staff.nickname ?? staff.fullName ?? '') || staff.email : 'this staff member';
+          return `Assign ${name} to transaction #${txn.number}?`;
+        })()}
+        confirmLabel="Assign"
+        confirmVariant="dark"
+        onConfirm={() => {
+          updateTxnMut.mutate(
+            { staffId: pendingStaffId === 'unassigned' ? null : pendingStaffId },
+            { onSuccess: () => setPendingStaffId(null), onError: () => setPendingStaffId(null) },
+          );
+        }}
+        onCancel={() => { if (!updateTxnMut.isPending) setPendingStaffId(null); }}
+        loading={updateTxnMut.isPending}
+      />
     </div>
   );
 }
