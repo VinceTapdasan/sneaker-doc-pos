@@ -20,10 +20,10 @@ import { CreatePromoDto } from './dto/create-promo.dto';
 import { UpdatePromoDto } from './dto/update-promo.dto';
 
 @Controller('promos')
+@UseGuards(SupabaseAuthGuard)
 export class PromosController {
   constructor(private readonly promosService: PromosService) {}
 
-  // Public — POS reads active promos
   @Get()
   findAll(@Query('active') active?: string) {
     return this.promosService.findAll(active === '1' || active === 'true');

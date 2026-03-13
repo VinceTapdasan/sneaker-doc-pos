@@ -36,7 +36,7 @@ export function useCreateExpenseMutation(date: string, onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { method?: string; category?: string; note?: string; amount: string }) =>
-      api.expenses.create({ ...body, date }),
+      api.expenses.create({ ...body, dateKey: date }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: expensesKey(date) });
       qc.invalidateQueries({ queryKey: expensesSummaryKey(date) });

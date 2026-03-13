@@ -71,6 +71,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
   const [smsSending, setSmsSending] = useState(false);
+  const [smsConfirmed, setSmsConfirmed] = useState(false);
 
   const txnPhotoFileRef = useRef<HTMLInputElement>(null);
   const txnPhotoCameraRef = useRef<HTMLInputElement>(null);
@@ -153,6 +154,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
   const txnBalance = txn ? parseFloat(txn.total) - parseFloat(txn.paid) : 0;
 
+  // Transaction-level after photo — satisfies the "after photo" claiming requirement
+  const hasTransactionAfterPhoto = useMemo(
+    () => (txn?.photos ?? []).some((p) => p.type === 'after'),
+    [txn?.photos],
+  );
+
   // The single remaining non-claimed, non-cancelled item — balance gates only this one
   const lastClaimableItemId = useMemo(() => {
     if (!txn?.items) return null;
@@ -229,8 +236,9 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       disableUploadBefore: true,
       txnBalance,
       lastClaimableItemId,
+      hasTransactionAfterPhoto,
     }),
-    [loadingItemIds, uploadingItemIds, handleUploadClick, handleCameraClick, txnBalance, lastClaimableItemId],
+    [loadingItemIds, uploadingItemIds, handleUploadClick, handleCameraClick, txnBalance, lastClaimableItemId, hasTransactionAfterPhoto],
   );
   const addPaymentMut = useAddPaymentMutation(id, () => {
     setPaymentDialogOpen(false);
@@ -729,8 +737,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             </div>
           )}
 
-          {/* Assigned Staff */}
-          {isAdmin && (
+          {/* Assigned Staff — all roles can assign */}
+          {assignableUsers.length > 0 && (
             <div className="bg-white border border-zinc-200 rounded-lg p-5">
               <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
                 Assigned To
@@ -864,20 +872,24 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                 <button
                   type="button"
                   className="flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150"
-                  onClick={async () => {
+                  onClick={() => {
                     if (emailTemplate === EMAIL_TEMPLATES.claim_stub) {
                       const link = generateGmailLinkNoBody(txn, EMAIL_TEMPLATES.claim_stub);
-                      try {
-                        if (!stubRef.current) throw new Error('ref missing');
-                        const dataUrl = await toPng(stubRef.current, { pixelRatio: 2 });
-                        const res = await fetch(dataUrl);
-                        const blob = await res.blob();
-                        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                        toast.success('Stub image copied', { description: 'Paste into the Gmail compose body' });
-                      } catch {
-                        // fallback silently
-                      }
+                      // Open Gmail synchronously to avoid mobile popup blocker,
+                      // then attempt clipboard copy in the background
                       window.open(link, '_blank');
+                      (async () => {
+                        try {
+                          if (!stubRef.current) return;
+                          const dataUrl = await toPng(stubRef.current, { pixelRatio: 2 });
+                          const res = await fetch(dataUrl);
+                          const blob = await res.blob();
+                          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                          toast.success('Stub image copied', { description: 'Paste into the Gmail compose body' });
+                        } catch {
+                          // clipboard image copy not supported on this device
+                        }
+                      })();
                     } else {
                       window.open(generateGmailLink(txn, emailTemplate), '_blank');
                     }

@@ -147,6 +147,7 @@ export const expenses = pgTable('expenses', {
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
 // ---------------------------------------------------------------------------

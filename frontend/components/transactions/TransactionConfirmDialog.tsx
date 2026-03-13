@@ -1,6 +1,5 @@
 'use client';
 
-import { CameraIcon } from '@phosphor-icons/react';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { formatDate, formatPeso } from '@/lib/utils';
 import type { Service, Promo, Customer } from '@/lib/types';
@@ -102,18 +101,9 @@ export function TransactionConfirmDialog({
                 const addons = (item.addonServiceIds ?? [])
                   .map((id) => services.find((s) => s.id === parseInt(id, 10)))
                   .filter(Boolean) as Service[];
-                const photo = pendingPhotos[idx];
                 return (
-                  <div key={idx} className="bg-zinc-50 rounded-md p-2.5 flex gap-2.5">
-                    {photo && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={photo.previewUrl}
-                        alt="Before"
-                        className="w-10 h-10 rounded object-cover shrink-0 self-start"
-                      />
-                    )}
-                    <div className="flex-1 min-w-0">
+                  <div key={idx} className="bg-zinc-50 rounded-md p-2.5">
+                    <div className="min-w-0">
                       <p className="text-sm text-zinc-950 truncate mb-1.5">
                         {item.shoeDescription || `Item ${idx + 1}`}
                       </p>
@@ -135,16 +125,6 @@ export function TransactionConfirmDialog({
               })}
             </div>
           </div>
-
-          {/* Photos note */}
-          {pendingPhotos.length > 0 && (
-            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
-              <CameraIcon size={14} className="text-blue-500 shrink-0" />
-              <p className="text-xs text-blue-600">
-                {pendingPhotos.length} before photo{pendingPhotos.length > 1 ? 's' : ''} will be uploaded after creation
-              </p>
-            </div>
-          )}
 
           {/* Total */}
           <div className="flex justify-between items-center border border-emerald-500 rounded-md px-3 py-2.5">

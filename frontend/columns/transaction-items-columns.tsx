@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { type ColumnDef } from '@tanstack/react-table';
 import { CameraIcon, UploadSimpleIcon } from '@phosphor-icons/react';
+import { toast } from 'sonner';
 import { Spinner } from '@/components/ui/spinner';
 import { formatPeso, STATUS_COLORS, cn } from '@/lib/utils';
 import { toTitleCase } from '@/utils/text';
@@ -46,6 +47,8 @@ interface TransactionItemColumnsOptions {
   txnBalance?: number;
   // ID of the single remaining claimable item — only this one is balance-gated
   lastClaimableItemId?: number | null;
+  // True if the transaction has at least one transaction-level "after" photo
+  hasTransactionAfterPhoto?: boolean;
 }
 
 const ITEM_STATUSES = ITEM_STATUS_VALUES;
@@ -144,7 +147,7 @@ function ImageCell({
   );
 }
 
-export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onUploadClick, onCameraClick, loadingItemIds, uploadingItemIds, disableUploadBefore, txnBalance, lastClaimableItemId }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
+export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onUploadClick, onCameraClick, loadingItemIds, uploadingItemIds, disableUploadBefore, txnBalance, lastClaimableItemId, hasTransactionAfterPhoto }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
   {
     accessorKey: 'shoeDescription',
     header: 'Shoe',
@@ -212,7 +215,8 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
         return <StatusBadge status={row.original.status} />;
       }
 
-      const missingAfter = !row.original.afterImageUrl;
+      // After photo can be either per-item (afterImageUrl) or transaction-level (photos with type=after)
+      const missingAfter = !row.original.afterImageUrl && !hasTransactionAfterPhoto;
       // Balance only blocks the very last claimable item — others can be claimed freely
       const isLastClaimable = lastClaimableItemId === row.original.id;
       const balanceBlocked = isLastClaimable && (txnBalance ?? 0) > 0;
@@ -222,8 +226,14 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
           value={row.original.status}
           onValueChange={(v) => {
             if (v === ITEM_STATUS.CLAIMED) {
-              if (missingAfter) { return; }
-              if (balanceBlocked) { return; }
+              if (missingAfter) {
+                toast.error('Upload an after photo before claiming this item.');
+                return;
+              }
+              if (balanceBlocked) {
+                toast.error('Settle the remaining balance before claiming the last item.');
+                return;
+              }
             }
             onStatusChange(row.original.id, v as ItemStatus);
           }}

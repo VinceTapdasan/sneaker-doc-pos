@@ -302,7 +302,7 @@ export function ReportPdf({ data, year, month, branchName, logoUrl }: Props) {
               style={[s.tRow, i === data.txnList.length - 1 ? { borderBottomWidth: 1.5, borderBottomColor: '#000' } : {}]}
             >
               <Text style={[s.td, s.w60]}>{t.number}</Text>
-              <Text style={[s.td, s.wFlex3]} numberOfLines={1}>{t.customerName ?? '—'}</Text>
+              <Text style={[s.td, s.wFlex3]}>{t.customerName ?? '—'}</Text>
               <Text style={[s.td, s.w50]}>
                 {new Date(t.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
               </Text>
@@ -329,7 +329,7 @@ export function ReportPdf({ data, year, month, branchName, logoUrl }: Props) {
                 <View key={e.id} style={s.tRow}>
                   <Text style={[s.td, s.w70]}>{e.dateKey}</Text>
                   <Text style={[s.td, s.wFlex2]}>{e.category ?? '—'}</Text>
-                  <Text style={[s.td, s.wFlex3]} numberOfLines={1}>{e.note ?? '—'}</Text>
+                  <Text style={[s.td, s.wFlex3]}>{e.note ?? '—'}</Text>
                   <Text style={[s.td, s.w70, s.alignRight]}>{e.amount}</Text>
                 </View>
               ))}

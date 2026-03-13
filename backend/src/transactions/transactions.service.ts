@@ -29,6 +29,7 @@ import {
   services,
   branches,
   deposits,
+  expenses,
   users as usersTable, // alias to avoid conflict with this.users (UsersService)
 } from '../db/schema';
 import {
@@ -70,15 +71,14 @@ export class TransactionsService {
     private readonly sms: SmsService,
   ) {}
 
-  // Generate next zero-padded transaction number using a DB sequence-safe query
+  // Generate next zero-padded transaction number using advisory lock to prevent race conditions.
+  // pg_advisory_xact_lock(1) serialises concurrent callers within the current transaction.
   private async nextNumber(): Promise<string> {
-    const [result] = await this.drizzle.db
-      .select({
-        max: sql<string>`COALESCE(MAX(CAST(${transactions.number} AS INTEGER)), 0)`,
-      })
-      .from(transactions);
-    const next = parseInt(result?.max ?? '0', 10) + 1;
-    return String(next).padStart(4, '0');
+    const [result] = await this.drizzle.db.execute(
+      sql`SELECT pg_advisory_xact_lock(1), COALESCE(MAX(CAST(${transactions.number} AS INTEGER)), 0) AS max FROM ${transactions}`,
+    );
+    const max = Number((result as Record<string, unknown>)?.max ?? 0);
+    return String(max + 1).padStart(4, '0');
   }
 
   async findAll(params: FindAllParams = {}) {
@@ -591,6 +591,7 @@ export class TransactionsService {
       .where(and(...conditions))
       .groupBy(claimPayments.method);
 
+    // NOTE: PostgreSQL SUM() returns strings via Drizzle — always coerce with Number()
     const collected: Record<string, number> = {
       cash: 0,
       gcash: 0,
@@ -598,30 +599,45 @@ export class TransactionsService {
       bank_deposit: 0,
     };
     rows.forEach((r) => {
-      collected[r.method] = r.total;
+      collected[r.method] = Number(r.total);
     });
 
-    // Fetch bank deposit total to compute net GCash (gcash collected - deposited to bank)
-    // month=0 means full year — sum across all months
+    // Fetch bank deposit total separately (the deposits table tracks bank_deposit
+    // amounts directly). Source-channel deductions are unreliable (upsertSingle
+    // clamps new rows to 0 via Math.max), so we subtract from the correct channel
+    // using the origin field.
     const depositConditions: ReturnType<typeof eq>[] = [
       eq(deposits.year, year),
       eq(deposits.method, 'bank_deposit'),
-      (branchId ? eq(deposits.branchId, branchId) : isNull(deposits.branchId)) as ReturnType<typeof eq>,
+      ...(branchId ? [eq(deposits.branchId, branchId)] : []),
       ...(month !== 0 ? [eq(deposits.month, month)] : []),
     ];
     const depositRows = await this.drizzle.db
-      .select({ total: sql<number>`COALESCE(SUM(${deposits.amount}), 0)` })
+      .select({
+        origin: deposits.origin,
+        total: sql<number>`COALESCE(SUM(${deposits.amount}), 0)`,
+      })
       .from(deposits)
-      .where(and(...depositConditions));
-    const bankDepositedScaled = depositRows[0]?.total ?? 0;
+      .where(and(...depositConditions))
+      .groupBy(deposits.origin);
 
-    const gcashNet = Math.max(0, collected.gcash - bankDepositedScaled);
+    // Sum bank deposits and subtract from their respective source channels
+    let bankDepositTotal = 0;
+    depositRows.forEach((r) => {
+      const amount = Number(r.total);
+      bankDepositTotal += amount;
+      // Subtract from the source channel (gcash, cash, card)
+      const origin = r.origin ?? 'gcash';
+      if (origin in collected) {
+        collected[origin] = Math.max(0, collected[origin] - amount);
+      }
+    });
 
     return {
       cash: fromScaled(collected.cash),
-      gcash: fromScaled(gcashNet),
+      gcash: fromScaled(collected.gcash),
       card: fromScaled(collected.card),
-      bank_deposit: fromScaled(bankDepositedScaled),
+      bank_deposit: fromScaled(bankDepositTotal),
     };
   }
 
@@ -648,6 +664,179 @@ export class TransactionsService {
       .where(and(...conditions))
       .orderBy(desc(claimPayments.paidAt));
     return rows.map((r) => ({ ...r, amount: fromScaled(r.amount) }));
+  }
+
+  /**
+   * Pre-computed dashboard summary — ALL financial math happens here, not on the frontend.
+   * Combines: monthly revenue/paid/balance, expenses total, net income, collection channels,
+   * today's collections (list + total), and daily stats (staff view).
+   */
+  async dashboardSummary(year: number, month: number, branchId?: number) {
+    const { from, to, fromDate, toDate } = this.getDateRange(year, month);
+
+    // ---------- Shared conditions ----------
+    const txnBaseConditions = [
+      gte(transactions.createdAt, from),
+      lte(transactions.createdAt, to),
+      isNull(transactions.deletedAt),
+    ];
+    if (branchId) txnBaseConditions.push(eq(transactions.branchId, branchId));
+    const activeTxnConditions = [...txnBaseConditions, ne(transactions.status, 'cancelled')];
+
+    // ---------- Run all queries in parallel ----------
+    const [
+      revenueRow,
+      statusRows,
+      collectionsResult,
+      expenseRow,
+      todayCollectionRows,
+      dailyRevenueRow,
+      dailyCountRow,
+    ] = await Promise.all([
+      // 1. Monthly revenue + paid from active (non-cancelled) transactions
+      this.drizzle.db
+        .select({
+          totalRevenue: sql<number>`COALESCE(SUM(${transactions.total}), 0)`,
+          totalPaid: sql<number>`COALESCE(SUM(${transactions.paid}), 0)`,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(transactions)
+        .where(and(...activeTxnConditions)),
+
+      // 2. Transaction counts by status
+      this.drizzle.db
+        .select({
+          status: transactions.status,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(transactions)
+        .where(and(...txnBaseConditions))
+        .groupBy(transactions.status),
+
+      // 3. Collection channels (reuse existing method)
+      this.collectionsSummary(year, month, branchId),
+
+      // 4. Monthly expenses total (branch-scoped via staff membership)
+      (async () => {
+        const dateRange = and(
+          gte(expenses.dateKey, fromDate),
+          lte(expenses.dateKey, toDate),
+          isNull(expenses.deletedAt),
+        );
+        if (branchId) {
+          const staffRows = await this.drizzle.db
+            .select({ id: usersTable.id })
+            .from(usersTable)
+            .where(eq(usersTable.branchId, branchId));
+          const staffIds = staffRows.map((u) => u.id);
+          if (staffIds.length === 0) return [{ total: 0 }];
+          return this.drizzle.db
+            .select({ total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
+            .from(expenses)
+            .where(and(dateRange, inArray(expenses.staffId, staffIds)));
+        }
+        return this.drizzle.db
+          .select({ total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
+          .from(expenses)
+          .where(dateRange);
+      })(),
+
+      // 5. Today's collections (list)
+      this.todayCollections(branchId),
+
+      // 6. Daily revenue stats (for staff view)
+      (async () => {
+        const today = new Date().toISOString().split('T')[0];
+        const dailyConds = [
+          sql`${transactions.createdAt}::date = ${today}::date` as ReturnType<typeof eq>,
+          isNull(transactions.deletedAt),
+          ne(transactions.status, 'cancelled') as ReturnType<typeof eq>,
+        ];
+        if (branchId) dailyConds.push(eq(transactions.branchId, branchId));
+        return this.drizzle.db
+          .select({
+            totalRevenue: sql<number>`COALESCE(SUM(${transactions.total}), 0)`,
+            totalPaid: sql<number>`COALESCE(SUM(${transactions.paid}), 0)`,
+          })
+          .from(transactions)
+          .where(and(...dailyConds));
+      })(),
+
+      // 7. Daily transaction count
+      (async () => {
+        const today = new Date().toISOString().split('T')[0];
+        const dailyConds = [
+          sql`${transactions.createdAt}::date = ${today}::date` as ReturnType<typeof eq>,
+          isNull(transactions.deletedAt),
+          ne(transactions.status, 'cancelled') as ReturnType<typeof eq>,
+        ];
+        if (branchId) dailyConds.push(eq(transactions.branchId, branchId));
+        return this.drizzle.db
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(transactions)
+          .where(and(...dailyConds));
+      })(),
+    ]);
+
+    // ---------- Compute all values (Number() to guard against string coercion) ----------
+    const totalRevenue = Number(revenueRow[0]?.totalRevenue ?? 0);
+    const totalPaid = Number(revenueRow[0]?.totalPaid ?? 0);
+    const txnCount = Number(revenueRow[0]?.count ?? 0);
+    const totalExpenses = Number(expenseRow[0]?.total ?? 0);
+
+    const byStatus: Record<string, number> = {};
+    let totalAllStatuses = 0;
+    statusRows.forEach((r) => {
+      const c = Number(r.count);
+      byStatus[r.status] = c;
+      totalAllStatuses += c;
+    });
+
+    const todayCollTotal = todayCollectionRows.reduce(
+      (s, c) => s + parseFloat(c.amount), 0,
+    );
+
+    const dailyRev = Number(dailyRevenueRow[0]?.totalRevenue ?? 0);
+    const dailyPaid = Number(dailyRevenueRow[0]?.totalPaid ?? 0);
+    const dailyCount = Number(dailyCountRow[0]?.count ?? 0);
+
+    return {
+      monthly: {
+        transactionCount: txnCount,
+        totalRevenue: fromScaled(totalRevenue),
+        totalPaid: fromScaled(totalPaid),
+        totalBalance: fromScaled(totalRevenue - totalPaid),
+        totalExpenses: fromScaled(totalExpenses),
+        netIncome: fromScaled(totalRevenue - totalExpenses),
+        byStatus: { ...byStatus, total: totalAllStatuses },
+      },
+      collections: collectionsResult,
+      todayCollections: todayCollectionRows,
+      todayCollectionTotal: todayCollTotal.toFixed(2),
+      daily: {
+        count: dailyCount,
+        totalRevenue: fromScaled(dailyRev),
+        totalPaid: fromScaled(dailyPaid),
+        totalBalance: fromScaled(dailyRev - dailyPaid),
+      },
+    };
+  }
+
+  private getDateRange(year: number, month: number) {
+    const from = month === 0
+      ? new Date(`${year}-01-01T00:00:00`)
+      : new Date(`${year}-${String(month).padStart(2, '0')}-01T00:00:00`);
+    const lastDay = month === 0 ? 31 : new Date(year, month, 0).getDate();
+    const to = month === 0
+      ? new Date(`${year}-12-31T23:59:59`)
+      : new Date(`${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59`);
+    const fromDate = month === 0
+      ? `${year}-01-01`
+      : `${year}-${String(month).padStart(2, '0')}-01`;
+    const toDate = month === 0
+      ? `${year}-12-31`
+      : `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    return { from, to, fromDate, toDate };
   }
 
   // Auto-sync transaction status and total when items change
@@ -739,6 +928,16 @@ export class TransactionsService {
 
     if (!existing) throw new NotFoundException(`Item ${itemId} not found`);
 
+    // Validate BEFORE writing — guards must run before any DB mutation
+    if (dto.status && dto.status !== existing.status && dto.status === 'claimed') {
+      const otherClaimable = (txn.items ?? []).filter(
+        (i) => i.id !== itemId && i.status !== 'claimed' && i.status !== 'cancelled',
+      );
+      if (otherClaimable.length === 0 && txn.total > txn.paid) {
+        throw new BadRequestException('Balance must be fully settled before the last item can be claimed.');
+      }
+    }
+
     const [updated] = await this.drizzle.db
       .update(transactionItems)
       .set(dto)
@@ -746,15 +945,6 @@ export class TransactionsService {
       .returning();
 
     if (dto.status && dto.status !== existing.status) {
-      // Guard: last claimable item cannot be claimed if there's an outstanding balance
-      if (dto.status === 'claimed') {
-        const otherClaimable = (txn.items ?? []).filter(
-          (i) => i.id !== itemId && i.status !== 'claimed' && i.status !== 'cancelled',
-        );
-        if (otherClaimable.length === 0 && txn.total > txn.paid) {
-          throw new BadRequestException('Balance must be fully settled before the last item can be claimed.');
-        }
-      }
 
       const branchId = performedBy
         ? await this.users.getBranchId(performedBy)
@@ -787,6 +977,40 @@ export class TransactionsService {
             : {}),
         },
       });
+
+      // Auto-create refund expense when an item is cancelled
+      if (dto.status === 'cancelled' && existing.price !== null && existing.price > 0) {
+        const todayKey = new Date().toISOString().split('T')[0];
+        const refundAmount = existing.price; // already scaled
+        const [refundExpense] = await this.drizzle.db
+          .insert(expenses)
+          .values({
+            dateKey: todayKey,
+            category: 'Refund',
+            note: `Refund — Txn #${txn.number} — ${existing.shoeDescription || 'Item'}`,
+            method: 'cash',
+            source: 'system',
+            amount: refundAmount,
+            staffId: performedBy ?? null,
+          })
+          .returning();
+
+        await this.audit.log({
+          action: 'create',
+          auditType: AUDIT_TYPE.ITEM_STATUS_CHANGED,
+          entityType: 'expense',
+          entityId: String(refundExpense.id),
+          source: 'system',
+          performedBy,
+          branchId: branchId ?? undefined,
+          details: {
+            reason: 'item_cancellation_refund',
+            transactionNumber: txn.number,
+            shoe: existing.shoeDescription,
+            refundAmount: fromScaled(refundAmount),
+          },
+        });
+      }
 
       // Auto-sync parent transaction status
       await this.syncTransactionStatus(transactionId);
@@ -957,7 +1181,7 @@ export class TransactionsService {
 
     await this.audit.log({
       action: 'delete',
-      auditType: AUDIT_TYPE.TRANSACTION_CANCELLED,
+      auditType: AUDIT_TYPE.TRANSACTION_DELETED,
       entityType: 'transaction',
       entityId: txn.number,
       source: 'admin',
@@ -979,11 +1203,18 @@ export class TransactionsService {
     return rows.map(mapTxn);
   }
 
-  async restore(id: number, performedBy?: string) {
+  async restore(id: number, performedBy?: string, scopedBranch?: number) {
+    const conditions: ReturnType<typeof eq>[] = [
+      eq(transactions.id, id),
+      isNotNull(transactions.deletedAt) as ReturnType<typeof eq>,
+    ];
+    if (scopedBranch !== undefined) {
+      conditions.push(eq(transactions.branchId, scopedBranch));
+    }
     const [txn] = await this.drizzle.db
       .select()
       .from(transactions)
-      .where(and(eq(transactions.id, id), isNotNull(transactions.deletedAt)));
+      .where(and(...conditions));
     if (!txn) throw new NotFoundException(`Deleted transaction ${id} not found`);
 
     const [restored] = await this.drizzle.db

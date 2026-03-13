@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { eq } from 'drizzle-orm';
 import { SupabaseService } from '../supabase/supabase.service';
 import { DrizzleService } from '../db/drizzle.service';
-import { transactionItems } from '../db/schema';
+import { transactionItems, transactions } from '../db/schema';
 import { PresignedUrlDto } from './dto/presigned-url.dto';
 
 @Injectable()
@@ -13,6 +13,15 @@ export class UploadsService {
     private readonly db: DrizzleService,
     private readonly config: ConfigService,
   ) {}
+
+  async getTransactionBranchId(txnId: number): Promise<number | null> {
+    const [txn] = await this.db.db
+      .select({ branchId: transactions.branchId })
+      .from(transactions)
+      .where(eq(transactions.id, txnId))
+      .limit(1);
+    return txn?.branchId ?? null;
+  }
 
   async createPresignedUrl(dto: PresignedUrlDto) {
     const bucket = this.config.getOrThrow<string>('SUPABASE_STORAGE_BUCKET');

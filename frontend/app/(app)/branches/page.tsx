@@ -4,9 +4,15 @@ import { useMemo, useState } from 'react';
 import { PlusIcon } from '@phosphor-icons/react';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { DataTable } from '@/components/ui/data-table';
-import { EmptyState } from '@/components/ui/empty-state';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { createBranchesColumns } from '@/columns/branches-columns';
 import {
   useBranchesQuery,
@@ -31,41 +37,42 @@ const EMPTY_FORM: NewForm = { name: '', streetName: '', barangay: '', city: '', 
 const INPUT_CLS = 'px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md text-zinc-950 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
 
 export default function BranchesPage() {
-  const [showForm, setShowForm] = useState(false);
-  const [newForm, setNewForm] = useState<NewForm>(EMPTY_FORM);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [form, setForm] = useState<NewForm>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Branch | null>(null);
 
-  const { data: branches = [], isLoading } = useBranchesQuery(false);
+  const { data: branches = [], isLoading } = useBranchesQuery(true);
 
+  const closeDialog = () => setDialogOpen(false);
   const createMut = useCreateBranchMutation(() => {
-    setShowForm(false);
-    setNewForm(EMPTY_FORM);
+    closeDialog();
+    setForm(EMPTY_FORM);
   });
 
   const deleteMut = useDeleteBranchMutation(() => setDeleteTarget(null));
   const activateMut = useUpdateBranchMutation();
 
   function set(field: keyof NewForm, value: string) {
-    setNewForm((f) => ({ ...f, [field]: value }));
+    setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  function openCreate() {
+    setForm(EMPTY_FORM);
+    setDialogOpen(true);
   }
 
   function handleCreate() {
-    const name = newForm.name.trim();
+    const name = form.name.trim();
     if (!name) return;
     createMut.mutate({
       name,
-      streetName: newForm.streetName.trim() || undefined,
-      barangay: newForm.barangay.trim() || undefined,
-      city: newForm.city.trim() || undefined,
-      province: newForm.province.trim() || undefined,
+      streetName: form.streetName.trim() || undefined,
+      barangay: form.barangay.trim() || undefined,
+      city: form.city.trim() || undefined,
+      province: form.province.trim() || undefined,
       country: COUNTRY_DEFAULT,
-      phone: newForm.phone.trim() || undefined,
+      phone: form.phone.trim() || undefined,
     });
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') handleCreate();
-    if (e.key === 'Escape') { setShowForm(false); setNewForm(EMPTY_FORM); }
   }
 
   const columns = useMemo(
@@ -77,8 +84,127 @@ export default function BranchesPage() {
     [],
   );
 
+  const isBusy = createMut.isPending;
+
   return (
-    <>
+    <div>
+      <PageHeader
+        title="Branches"
+        subtitle={`${branches.length} branch${branches.length !== 1 ? 'es' : ''}`}
+        action={
+          <Button onClick={openCreate}>
+            <PlusIcon size={14} weight="bold" />
+            New Branch
+          </Button>
+        }
+      />
+
+      <DataTable
+        columns={columns}
+        data={branches}
+        isLoading={isLoading}
+        loadingRows={3}
+        emptyTitle="No branches yet"
+        emptyDescription="Create the first branch to get started."
+      />
+
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open && !isBusy) closeDialog(); }}>
+        <DialogContent className="bg-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">New Branch</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-zinc-700">Branch Name *</label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => set('name', e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
+                  placeholder="e.g. Main Branch"
+                  className={INPUT_CLS}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-zinc-700">Phone</label>
+                <input
+                  type="text"
+                  value={form.phone}
+                  onChange={(e) => set('phone', e.target.value)}
+                  placeholder="Optional"
+                  className={`${INPUT_CLS} font-mono`}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-zinc-700">Street Name / Purok</label>
+              <input
+                type="text"
+                value={form.streetName}
+                onChange={(e) => set('streetName', e.target.value)}
+                placeholder="Optional"
+                className={INPUT_CLS}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-zinc-700">Barangay</label>
+                <input
+                  type="text"
+                  value={form.barangay}
+                  onChange={(e) => set('barangay', e.target.value)}
+                  placeholder="Optional"
+                  className={INPUT_CLS}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-zinc-700">City</label>
+                <input
+                  type="text"
+                  value={form.city}
+                  onChange={(e) => set('city', e.target.value)}
+                  placeholder="Optional"
+                  className={INPUT_CLS}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-zinc-700">Province</label>
+                <input
+                  type="text"
+                  value={form.province}
+                  onChange={(e) => set('province', e.target.value)}
+                  placeholder="Optional"
+                  className={INPUT_CLS}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-400 border border-zinc-100 rounded-md bg-zinc-50">
+              <span className="text-zinc-300 text-xs uppercase tracking-wider">Country</span>
+              <span>{COUNTRY_DEFAULT}</span>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                className="flex-1"
+                disabled={isBusy || !form.name.trim()}
+                onClick={handleCreate}
+              >
+                {isBusy ? <Spinner /> : 'Save Branch'}
+              </Button>
+              <Button size="sm" variant="ghost" disabled={isBusy} onClick={closeDialog}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDialog
         open={!!deleteTarget}
         title="Remove branch?"
@@ -88,120 +214,6 @@ export default function BranchesPage() {
         onCancel={() => setDeleteTarget(null)}
         loading={deleteMut.isPending}
       />
-      <div>
-        <PageHeader
-          title="Branches"
-          subtitle={`${branches.length} branch${branches.length !== 1 ? 'es' : ''}`}
-          action={
-            !showForm ? (
-              <Button onClick={() => setShowForm(true)}>
-                <PlusIcon size={14} weight="bold" />
-                New Branch
-              </Button>
-            ) : null
-          }
-        />
-
-        {showForm && (
-          <div className="bg-white border border-zinc-200 rounded-lg p-4 mb-5 space-y-3">
-            {/* Row 1: Name + Phone */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input
-                autoFocus
-                type="text"
-                value={newForm.name}
-                onChange={(e) => set('name', e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Branch name *"
-                className={INPUT_CLS}
-              />
-              <input
-                type="text"
-                value={newForm.phone}
-                onChange={(e) => set('phone', e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Phone (optional)"
-                className={`${INPUT_CLS} font-mono`}
-              />
-            </div>
-
-            {/* Row 2: Street Name / Purok (full width) */}
-            <input
-              type="text"
-              value={newForm.streetName}
-              onChange={(e) => set('streetName', e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Street Name / Purok (optional)"
-              className={`w-full ${INPUT_CLS}`}
-            />
-
-            {/* Row 3: Barangay | City | Province */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <input
-                type="text"
-                value={newForm.barangay}
-                onChange={(e) => set('barangay', e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Barangay"
-                className={INPUT_CLS}
-              />
-              <input
-                type="text"
-                value={newForm.city}
-                onChange={(e) => set('city', e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="City / Municipality"
-                className={INPUT_CLS}
-              />
-              <input
-                type="text"
-                value={newForm.province}
-                onChange={(e) => set('province', e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Province"
-                className={INPUT_CLS}
-              />
-            </div>
-
-            {/* Row 4: Country (static) + actions */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-              <div className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-400 border border-zinc-100 rounded-md bg-zinc-50">
-                <span className="text-zinc-300 text-xs uppercase tracking-wider">Country</span>
-                <span>{COUNTRY_DEFAULT}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="dark"
-                  disabled={!newForm.name.trim() || createMut.isPending}
-                  onClick={handleCreate}
-                >
-                  {createMut.isPending ? 'Saving...' : 'Save Branch'}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => { setShowForm(false); setNewForm(EMPTY_FORM); }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-12 bg-zinc-200 rounded-lg animate-pulse" />
-            ))}
-          </div>
-        ) : branches.length === 0 ? (
-          <EmptyState title="No branches yet" description="Create the first branch to get started." />
-        ) : (
-          <DataTable columns={columns} data={branches} />
-        )}
-      </div>
-    </>
+    </div>
   );
 }

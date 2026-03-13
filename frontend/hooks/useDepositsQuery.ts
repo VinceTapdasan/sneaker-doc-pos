@@ -27,6 +27,7 @@ export function useUpsertDepositMutation(year: number, month: number, branchId?:
       void qc.invalidateQueries({ queryKey: ['deposits', year, month, branchId] });
       void qc.invalidateQueries({ queryKey: ['deposits-audit'] });
       void qc.invalidateQueries({ queryKey: ['collections-summary'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
     },
     onError: (err: Error) => toast.error('Failed to save deposit', { description: err.message }),
   });

@@ -92,20 +92,24 @@ export function ClaimStubDialog({ open, txn, onViewTransaction }: ClaimStubDialo
     ? generateGmailLinkNoBody(txn, EMAIL_TEMPLATES.claim_stub)
     : null;
 
-  async function handleEmail() {
+  function handleEmail() {
     if (!gmailLink) return;
 
-    try {
-      if (!stubRef.current) throw new Error('ref missing');
-      const dataUrl = await toPng(stubRef.current, { pixelRatio: 2 });
-      const res = await fetch(dataUrl);
-      const blob = await res.blob();
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-      toast.success('Stub image copied', { description: 'Paste into the Gmail compose body' });
-    } catch {
-      // fallback: open gmail with plain text body
-    }
+    // Open Gmail synchronously to avoid mobile popup blocker,
+    // then attempt clipboard copy in the background
     window.open(gmailLink, '_blank');
+    (async () => {
+      try {
+        if (!stubRef.current) return;
+        const dataUrl = await toPng(stubRef.current, { pixelRatio: 2 });
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        toast.success('Stub image copied', { description: 'Paste into the Gmail compose body' });
+      } catch {
+        // clipboard image copy not supported on this device
+      }
+    })();
   }
 
   return (

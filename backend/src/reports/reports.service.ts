@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, isNull, lte, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import {
   transactions,
@@ -7,6 +7,7 @@ import {
   claimPayments,
   expenses,
   services as servicesTable,
+  users,
 } from '../db/schema';
 import { fromScaled } from '../utils/money';
 
@@ -75,12 +76,28 @@ export class ReportsService {
         .where(and(...paymentConditions))
         .groupBy(claimPayments.method),
 
-      // Expenses for period
-      this.drizzle.db
-        .select()
-        .from(expenses)
-        .where(and(gte(expenses.dateKey, fromDate), lte(expenses.dateKey, toDate)))
-        .orderBy(expenses.dateKey),
+      // Expenses for period (branch-scoped via staff membership)
+      (async () => {
+        const dateRange = and(gte(expenses.dateKey, fromDate), lte(expenses.dateKey, toDate));
+        if (branchId) {
+          const staffRows = await this.drizzle.db
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.branchId, branchId));
+          const staffIds = staffRows.map((u) => u.id);
+          if (staffIds.length === 0) return [];
+          return this.drizzle.db
+            .select()
+            .from(expenses)
+            .where(and(dateRange, inArray(expenses.staffId, staffIds)))
+            .orderBy(expenses.dateKey);
+        }
+        return this.drizzle.db
+          .select()
+          .from(expenses)
+          .where(dateRange)
+          .orderBy(expenses.dateKey);
+      })(),
 
       // Transaction counts by status
       this.drizzle.db

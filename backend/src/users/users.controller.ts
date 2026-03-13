@@ -121,7 +121,7 @@ export class UsersController {
 
   @Patch(':id/role')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'superadmin')
+  @Roles('superadmin')
   updateRole(@Param('id') id: string, @Body() body: { userType: UserType }, @Req() req: AuthedRequest) {
     return this.usersService.updateUserType(id, body.userType, req.user?.id);
   }

@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { asc, eq, and } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import { AuditService } from '../audit/audit.service';
-import { users, staffDocuments } from '../db/schema';
+import { users, staffDocuments, branches } from '../db/schema';
 import type { UserType } from '../db/constants';
 import type { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 
@@ -38,6 +38,13 @@ export class UsersService {
   async onboard(id: string, branchId: number) {
     const user = await this.findById(id);
     if (!user) throw new NotFoundException('User not found');
+
+    // Verify the branch exists and is active
+    const [branch] = await this.drizzle.db
+      .select({ id: branches.id })
+      .from(branches)
+      .where(and(eq(branches.id, branchId), eq(branches.isActive, true)));
+    if (!branch) throw new NotFoundException('Branch not found or inactive');
 
     const [updated] = await this.drizzle.db
       .update(users)

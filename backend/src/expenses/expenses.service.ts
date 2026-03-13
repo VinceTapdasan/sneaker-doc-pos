@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { eq, sql, gte, lte, and, inArray } from 'drizzle-orm';
+import { eq, sql, gte, lte, and, inArray, isNull } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import { expenses, users } from '../db/schema';
 import { AuditService } from '../audit/audit.service';
@@ -33,7 +33,7 @@ export class ExpensesService {
       ? `${year}-12-31`
       : `${year}-${String(month).padStart(2, '0')}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
 
-    const dateRange = and(gte(expenses.dateKey, from), lte(expenses.dateKey, to));
+    const dateRange = and(gte(expenses.dateKey, from), lte(expenses.dateKey, to), isNull(expenses.deletedAt));
 
     if (branchId) {
       const staffIds = await this.branchStaffIds(branchId);
@@ -53,7 +53,7 @@ export class ExpensesService {
   }
 
   async findByDate(dateKey: string, staffId?: string, branchId?: number) {
-    const dateCondition = eq(expenses.dateKey, dateKey);
+    const dateCondition = and(eq(expenses.dateKey, dateKey), isNull(expenses.deletedAt));
 
     if (staffId) {
       const rows = await this.drizzle.db
@@ -85,7 +85,7 @@ export class ExpensesService {
       const [result] = await this.drizzle.db
         .select({ total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
         .from(expenses)
-        .where(and(eq(expenses.dateKey, dateKey), eq(expenses.staffId, staffId)));
+        .where(and(eq(expenses.dateKey, dateKey), eq(expenses.staffId, staffId), isNull(expenses.deletedAt)));
       return { dateKey, total: fromScaled(result?.total ?? 0) };
     }
 
@@ -95,14 +95,14 @@ export class ExpensesService {
       const [result] = await this.drizzle.db
         .select({ total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
         .from(expenses)
-        .where(and(eq(expenses.dateKey, dateKey), inArray(expenses.staffId, staffIds)));
+        .where(and(eq(expenses.dateKey, dateKey), inArray(expenses.staffId, staffIds), isNull(expenses.deletedAt)));
       return { dateKey, total: fromScaled(result?.total ?? 0) };
     }
 
     const [result] = await this.drizzle.db
       .select({ total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
       .from(expenses)
-      .where(eq(expenses.dateKey, dateKey));
+      .where(and(eq(expenses.dateKey, dateKey), isNull(expenses.deletedAt)));
     return { dateKey, total: fromScaled(result?.total ?? 0) };
   }
 
@@ -110,7 +110,7 @@ export class ExpensesService {
     const [expense] = await this.drizzle.db
       .select()
       .from(expenses)
-      .where(eq(expenses.id, id));
+      .where(and(eq(expenses.id, id), isNull(expenses.deletedAt)));
     if (!expense) throw new NotFoundException(`Expense ${id} not found`);
     return { ...expense, amount: fromScaled(expense.amount) };
   }
@@ -118,6 +118,18 @@ export class ExpensesService {
   async create(dto: CreateExpenseDto, source = 'pos', performedBy?: string, branchId?: number) {
     if (!dto.method) {
       throw new BadRequestException('Payment method is required');
+    }
+
+    // Prevent future-dated or excessively backdated expenses (>7 days)
+    const expenseDate = new Date(dto.dateKey + 'T00:00:00');
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    if (expenseDate > today) {
+      throw new BadRequestException('Cannot create an expense with a future date.');
+    }
+    if (expenseDate < sevenDaysAgo) {
+      throw new BadRequestException('Cannot create an expense dated more than 7 days in the past.');
     }
 
     const [created] = await this.drizzle.db
@@ -176,7 +188,10 @@ export class ExpensesService {
   async remove(id: number, performedBy?: string, branchId?: number) {
     await this.findOne(id);
 
-    await this.drizzle.db.delete(expenses).where(eq(expenses.id, id));
+    await this.drizzle.db
+      .update(expenses)
+      .set({ deletedAt: new Date() })
+      .where(eq(expenses.id, id));
 
     await this.audit.log({
       action: 'delete',

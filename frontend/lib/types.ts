@@ -215,6 +215,32 @@ export interface TodayCollection {
   customerName: string | null;
 }
 
+export interface DashboardSummary {
+  monthly: {
+    transactionCount: number;
+    totalRevenue: string;
+    totalPaid: string;
+    totalBalance: string;
+    totalExpenses: string;
+    netIncome: string;
+    byStatus: Record<string, number> & { total: number };
+  };
+  collections: {
+    cash: string;
+    gcash: string;
+    card: string;
+    bank_deposit: string;
+  };
+  todayCollections: TodayCollection[];
+  todayCollectionTotal: string;
+  daily: {
+    count: number;
+    totalRevenue: string;
+    totalPaid: string;
+    totalBalance: string;
+  };
+}
+
 export interface ReportSummary {
   collections: {
     cash: string;

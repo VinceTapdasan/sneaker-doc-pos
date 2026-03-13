@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Body, Query, Req, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Patch, Body, Query, Req, UseGuards, ForbiddenException, BadRequestException } from '@nestjs/common';
 import type { AuthedRequest } from '../auth/auth.types';
 import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -62,14 +62,31 @@ export class DepositsController {
     @Body() body: { year: number; month: number; method: string; amount: string; branchId?: number; origin?: string },
     @Req() req: AuthedRequest,
   ) {
-    const user = await this.usersService.findById(req.user.id);
-
-    if (!user?.branchId) {
-      throw new ForbiddenException('You must be assigned to a branch before recording deposits.');
+    // Require origin when depositing via bank_deposit
+    if (body.method === 'bank_deposit' && !body.origin) {
+      throw new BadRequestException('origin is required when method is bank_deposit');
     }
 
-    if (body.branchId && body.branchId !== user.branchId) {
-      throw new ForbiddenException('You can only record deposits for your own branch.');
+    const user = await this.usersService.findById(req.user.id);
+
+    let effectiveBranchId: number | undefined;
+
+    if (user?.userType === 'superadmin') {
+      // Superadmin can deposit to any branch via body.branchId, or their own if set
+      effectiveBranchId = body.branchId ?? user.branchId ?? undefined;
+    } else {
+      if (!user?.branchId) {
+        throw new ForbiddenException('You must be assigned to a branch before recording deposits. Please complete onboarding first.');
+      }
+      if (body.branchId && body.branchId !== user.branchId) {
+        throw new ForbiddenException('You can only record deposits for your own branch.');
+      }
+      effectiveBranchId = user.branchId;
+    }
+
+    // All deposits MUST be associated with a branch — no orphan deposits
+    if (!effectiveBranchId) {
+      throw new ForbiddenException('A branch must be selected to record deposits. Please complete onboarding or specify a branch.');
     }
 
     return this.depositsService.upsert(
@@ -77,7 +94,7 @@ export class DepositsController {
       body.month,
       body.method,
       body.amount,
-      user.branchId,
+      effectiveBranchId,
       req.user?.id,
       body.origin,
     );

@@ -10,6 +10,7 @@ import {
   Query,
   Req,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -61,7 +62,7 @@ export class ExpensesController {
     @Query('year') year: string,
     @Query('month') month: string,
   ) {
-    const dbUser = await this.usersService.findById(req.user.id);
+    const dbUser = await this.usersService.findById(req.user.id) as { userType: string; branchId?: number | null } | null;
     const branchId = this.scopedBranchId(dbUser);
     return this.expensesService.findByMonth(
       parseInt(year, 10),
@@ -75,8 +76,10 @@ export class ExpensesController {
   @Post()
   async create(@Body() dto: CreateExpenseDto, @Req() req: AuthedRequest) {
     const dbUser = await this.usersService.findById(req.user.id);
-    const branchId = dbUser?.branchId ?? undefined;
-    return this.expensesService.create(dto, 'pos', req.user?.id, branchId);
+    if (!dbUser?.branchId) {
+      throw new ForbiddenException('You must be assigned to a branch before logging expenses. Please complete onboarding first.');
+    }
+    return this.expensesService.create(dto, 'pos', req.user?.id, dbUser.branchId);
   }
 
   // Admin-only: edit or delete existing expenses

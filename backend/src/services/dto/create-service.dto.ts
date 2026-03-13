@@ -1,6 +1,17 @@
+import { IsString, IsIn, IsNumberString, IsOptional, IsBoolean } from 'class-validator';
+
 export class CreateServiceDto {
+  @IsString()
   name: string;
+
+  @IsString()
+  @IsIn(['primary', 'add_on'])
   type: 'primary' | 'add_on';
-  price: string; // numeric as string to preserve precision
+
+  @IsNumberString()
+  price: string;
+
+  @IsOptional()
+  @IsBoolean()
   isActive?: boolean;
 }

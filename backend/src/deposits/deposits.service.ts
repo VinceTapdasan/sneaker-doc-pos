@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import { AuditService } from '../audit/audit.service';
@@ -21,16 +21,21 @@ export class DepositsService {
       .from(deposits)
       .where(and(...conditions));
 
-    const result: Record<string, string> = {
-      cash: '0.00',
-      gcash: '0.00',
-      card: '0.00',
-      bank_deposit: '0.00',
+    const totals: Record<string, number> = {
+      cash: 0,
+      gcash: 0,
+      card: 0,
+      bank_deposit: 0,
     };
     rows.forEach((r) => {
-      result[r.method] = fromScaled(r.amount);
+      totals[r.method] = (totals[r.method] ?? 0) + r.amount;
     });
-    return result;
+    return {
+      cash: fromScaled(totals.cash),
+      gcash: fromScaled(totals.gcash),
+      card: fromScaled(totals.card),
+      bank_deposit: fromScaled(totals.bank_deposit),
+    };
   }
 
   private async upsertSingle(
@@ -50,11 +55,15 @@ export class DepositsService {
           eq(deposits.month, month),
           eq(deposits.method, method),
           branchId ? eq(deposits.branchId, branchId) : isNull(deposits.branchId),
+          origin ? eq(deposits.origin, origin) : isNull(deposits.origin),
         ),
       );
 
     if (existing.length > 0) {
       const newTotal = existing[0].amount + deltaScaled;
+      if (newTotal < 0) {
+        throw new BadRequestException(`Deposit balance for ${method} cannot go below zero.`);
+      }
       const [updated] = await this.drizzle.db
         .update(deposits)
         .set({ amount: newTotal, updatedAt: new Date() })
@@ -76,10 +85,11 @@ export class DepositsService {
 
     const result = await this.upsertSingle(year, month, method, addScaled, branchId, depositOrigin);
 
-    // When recording a bank deposit, subtract the same amount from the source channel
-    if (method === 'bank_deposit' && depositOrigin) {
-      await this.upsertSingle(year, month, depositOrigin, -addScaled, branchId);
-    }
+    // NOTE: Source-channel deduction rows are NOT created here.
+    // The collectionsSummary endpoint handles deductions by querying bank_deposit
+    // rows grouped by origin and subtracting from the corresponding collection
+    // channel. This avoids the non-atomic dual-write problem and the Math.max(0)
+    // clamping bug that prevented negative source-channel rows.
 
     await this.audit.log({
       action: `Recorded deposit: ${method} +${fromScaled(addScaled)} (total: ${fromScaled(result.amount)}) for ${year}-${String(month).padStart(2, '0')}`,
@@ -87,7 +97,7 @@ export class DepositsService {
       entityId: String(result.id),
       performedBy,
       branchId,
-      details: { year, month, method, added: fromScaled(addScaled), total: fromScaled(result.amount), ...(depositOrigin ? { origin: depositOrigin, subtractedFrom: depositOrigin, subtracted: fromScaled(addScaled) } : {}) },
+      details: { year, month, method, added: fromScaled(addScaled), total: fromScaled(result.amount), ...(depositOrigin ? { origin: depositOrigin } : {}) },
     });
 
     return { ...result, amount: fromScaled(result.amount) };

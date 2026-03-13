@@ -20,10 +20,10 @@ import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 
 @Controller('services')
+@UseGuards(SupabaseAuthGuard)
 export class ServicesController {
   constructor(private readonly servicesService: ServicesService) {}
 
-  // Public — POS reads service catalog
   @Get()
   findAll(@Query('active') active?: string) {
     return this.servicesService.findAll(active === '1' || active === 'true');

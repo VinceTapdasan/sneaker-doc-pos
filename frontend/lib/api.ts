@@ -15,6 +15,7 @@ import type {
   StaffDocument,
   Branch,
   TodayCollection,
+  DashboardSummary,
   DepositAuditEntry,
   ReportSummary,
 } from './types';
@@ -66,6 +67,11 @@ export const api = {
     upcomingByMonth: (year: number, month: number) =>
       apiFetch<Transaction[]>(`/transactions/upcoming/monthly?year=${year}&month=${month}`),
     todayCollections: () => apiFetch<TodayCollection[]>('/transactions/today-collections'),
+    dashboardSummary: (year: number, month: number, branchId?: number) => {
+      const qs = new URLSearchParams({ year: String(year), month: String(month) });
+      if (branchId) qs.set('branchId', String(branchId));
+      return apiFetch<DashboardSummary>(`/transactions/dashboard?${qs}`);
+    },
     collectionsSummary: (year: number, month: number, branchId?: number) => {
       const qs = new URLSearchParams({ year: String(year), month: String(month) });
       if (branchId) qs.set('branchId', String(branchId));
