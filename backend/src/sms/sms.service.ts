@@ -98,8 +98,9 @@ export class SmsService {
 
     if (!res.ok) {
       const text = await res.text();
-      this.logger.error(`Semaphore send failed: ${res.status} — ${text}`);
-      return;
+      const errorMsg = `Semaphore send failed: ${res.status} — ${text}`;
+      this.logger.error(errorMsg);
+      throw new Error(errorMsg);
     }
 
     const data = (await res.json()) as SemaphoreResponse[];

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, gte, getTableColumns, lte } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import { auditLog, users } from '../db/schema';
@@ -17,6 +17,8 @@ interface LogActionParams {
 
 @Injectable()
 export class AuditService {
+  private readonly logger = new Logger(AuditService.name);
+
   constructor(private readonly drizzle: DrizzleService) {}
 
   async findAll(params: { limit?: number; month?: number; year?: number; performedBy?: string; branchId?: number } = {}) {
@@ -55,15 +57,22 @@ export class AuditService {
   }
 
   async log(params: LogActionParams): Promise<void> {
-    await this.drizzle.db.insert(auditLog).values({
-      action: params.action,
-      auditType: params.auditType ?? null,
-      entityType: params.entityType,
-      entityId: params.entityId ?? null,
-      source: params.source ?? null,
-      performedBy: params.performedBy ?? null,
-      branchId: params.branchId ?? null,
-      details: params.details ?? null,
-    });
+    try {
+      await this.drizzle.db.insert(auditLog).values({
+        action: params.action,
+        auditType: params.auditType ?? null,
+        entityType: params.entityType,
+        entityId: params.entityId ?? null,
+        source: params.source ?? null,
+        performedBy: params.performedBy ?? null,
+        branchId: params.branchId ?? null,
+        details: params.details ?? null,
+      });
+    } catch (error) {
+      // Audit failures must never break primary operations
+      this.logger.error(
+        `[Audit] Failed to log: ${params.action} ${params.entityType}:${params.entityId ?? '?'} — ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 }
