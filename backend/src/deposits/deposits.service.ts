@@ -21,16 +21,21 @@ export class DepositsService {
       .from(deposits)
       .where(and(...conditions));
 
-    const result: Record<string, string> = {
-      cash: '0.00',
-      gcash: '0.00',
-      card: '0.00',
-      bank_deposit: '0.00',
+    const totals: Record<string, number> = {
+      cash: 0,
+      gcash: 0,
+      card: 0,
+      bank_deposit: 0,
     };
     rows.forEach((r) => {
-      result[r.method] = fromScaled(r.amount);
+      totals[r.method] = (totals[r.method] ?? 0) + r.amount;
     });
-    return result;
+    return {
+      cash: fromScaled(totals.cash),
+      gcash: fromScaled(totals.gcash),
+      card: fromScaled(totals.card),
+      bank_deposit: fromScaled(totals.bank_deposit),
+    };
   }
 
   private async upsertSingle(
@@ -50,6 +55,7 @@ export class DepositsService {
           eq(deposits.month, month),
           eq(deposits.method, method),
           branchId ? eq(deposits.branchId, branchId) : isNull(deposits.branchId),
+          origin ? eq(deposits.origin, origin) : isNull(deposits.origin),
         ),
       );
 
