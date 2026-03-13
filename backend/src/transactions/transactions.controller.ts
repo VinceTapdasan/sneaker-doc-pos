@@ -115,6 +115,22 @@ export class TransactionsController {
   }
 
   @UseGuards(SupabaseAuthGuard)
+  @Get('dashboard')
+  async dashboardSummary(
+    @Req() req: AuthedRequest,
+    @Query('year') year: string,
+    @Query('month') month: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    const branch = await this.scopedBranchId(req.user.id, branchId);
+    return this.transactionsService.dashboardSummary(
+      parseInt(year, 10),
+      parseInt(month, 10),
+      branch,
+    );
+  }
+
+  @UseGuards(SupabaseAuthGuard)
   @Get('collections/summary')
   async collectionsSummary(
     @Req() req: AuthedRequest,

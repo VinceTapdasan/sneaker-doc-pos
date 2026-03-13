@@ -158,6 +158,18 @@ export function useAddPaymentMutation(txnId: string, onSuccess?: () => void) {
   });
 }
 
+export function useDashboardSummaryQuery(
+  year: number,
+  month: number,
+  options?: { branchId?: number; enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: ['dashboard-summary', year, month, options?.branchId],
+    queryFn: () => api.transactions.dashboardSummary(year, month, options?.branchId),
+    enabled: options?.enabled ?? true,
+  });
+}
+
 export function useCollectionsSummaryQuery(
   year: number,
   month: number,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -31,12 +31,9 @@ import { DepositHistoryDialog } from '@/components/deposits/DepositHistoryDialog
 import { QrScanDialog } from '@/components/ui/qr-scan-dialog';
 import { formatPeso, formatDate, PAYMENT_METHOD_LABELS } from '@/lib/utils';
 import {
-  useTransactionReportQuery,
+  useDashboardSummaryQuery,
   useRecentTransactionsQuery,
   useUpcomingPickupsQuery,
-  useDailyStatsQuery,
-  useTodayCollectionsQuery,
-  useCollectionsSummaryQuery,
 } from '@/hooks/useTransactionsQuery';
 import {
   Select,
@@ -45,14 +42,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useMonthlyExpensesQuery } from '@/hooks/useExpensesQuery';
 import { useUpsertDepositMutation } from '@/hooks/useDepositsQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { useBranchesQuery } from '@/hooks/useBranchesQuery';
 import { PageHeader } from '@/components/ui/page-header';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { toTitleCase } from '@/utils/text';
-import type { Transaction, ClaimPayment } from '@/lib/types';
+import type { Transaction } from '@/lib/types';
 
 const ALL_QUICK_ACTIONS = [
   { label: 'New Transaction', href: '/transactions/new', icon: ReceiptIcon, adminOnly: false },
@@ -141,63 +137,30 @@ export default function DashboardPage() {
 
   const branchId = branchFilter !== 'all' ? parseInt(branchFilter, 10) : undefined;
 
-  const { data: reportTxns = [], isLoading: reportLoading } = useTransactionReportQuery(year, month, {
-    enabled: isAdmin,
+  // Single backend call — ALL financial calculations happen server-side
+  const { data: dashboard, isLoading: dashboardLoading } = useDashboardSummaryQuery(year, month, {
     branchId,
+    enabled: !!currentUser,
   });
-  const { data: dailyTxns = [], isLoading: dailyLoading } = useDailyStatsQuery();
+
+  const upsertDepositMut = useUpsertDepositMutation(year, month, branchId);
+
+  // Display-only lists (no calculations)
   const { data: recentTxns = [] } = useRecentTransactionsQuery(20);
   const { data: upcomingPickups = [] } = useUpcomingPickupsQuery();
-  const { data: expenses = [], isLoading: expensesLoading } = useMonthlyExpensesQuery(year, month, { enabled: isAdmin });
-  const { data: collectionsData, isLoading: collectionsLoading } = useCollectionsSummaryQuery(year, month, {
-    branchId,
-    enabled: isAdmin,
-  });
-  const upsertDepositMut = useUpsertDepositMutation(year, month, branchId);
-  const { data: todayCollections = [] } = useTodayCollectionsQuery();
 
   const quickActions = ALL_QUICK_ACTIONS.filter((a) => !a.adminOnly || isAdmin);
 
-  const from = month === 0 ? `${year}-01-01` : `${year}-${String(month).padStart(2, '0')}-01`;
-  const to = month === 0 ? `${year}-12-31` : `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`;
+  // Pre-computed values from backend
+  const monthly = dashboard?.monthly;
+  const collections = dashboard?.collections;
+  const todayCollections = dashboard?.todayCollections ?? [];
+  const todayCollectionTotal = parseFloat(dashboard?.todayCollectionTotal ?? '0');
+  const daily = dashboard?.daily;
 
-  const filtered = useMemo(() => {
-    return (reportTxns as Transaction[]).filter((t) => {
-      const d = t.createdAt.split('T')[0];
-      return d >= from && d <= to;
-    });
-  }, [reportTxns, from, to]);
-
-  const monthlyStats = useMemo(() => {
-    const active = filtered.filter((t) => t.status !== 'cancelled');
-    const totalRevenue = active.reduce((sum, t) => sum + parseFloat(t.total), 0);
-    const totalPaid = active.reduce((sum, t) => sum + parseFloat(t.paid), 0);
-    const byStatus = filtered.reduce(
-      (acc, t) => { acc[t.status] = (acc[t.status] ?? 0) + 1; return acc; },
-      {} as Record<string, number>,
-    );
-    const byPaymentMethod = filtered.reduce(
-      (acc, t) => {
-        (t.payments ?? []).forEach((p: ClaimPayment) => {
-          acc[p.method] = (acc[p.method] ?? 0) + parseFloat(p.amount);
-        });
-        return acc;
-      },
-      {} as Record<string, number>,
-    );
-    return { totalRevenue, totalPaid, totalBalance: totalRevenue - totalPaid, byStatus, byPaymentMethod };
-  }, [filtered]);
-
-  const dailyStats = useMemo(() => {
-    const txns = (dailyTxns as Transaction[]).filter((t) => t.status !== 'cancelled');
-    const totalRevenue = txns.reduce((sum, t) => sum + parseFloat(t.total), 0);
-    const totalPaid = txns.reduce((sum, t) => sum + parseFloat(t.paid), 0);
-    return { count: txns.length, totalRevenue, totalPaid, totalBalance: totalRevenue - totalPaid };
-  }, [dailyTxns]);
-
-  const todayCollectionTotal = todayCollections.reduce((sum, c) => sum + parseFloat(c.amount), 0);
-  const totalExpenses = (expenses ?? []).reduce((sum, e) => sum + parseFloat(e.amount), 0);
-  const monthlyNet = monthlyStats.totalRevenue - totalExpenses;
+  const totalRevenue = parseFloat(monthly?.totalRevenue ?? '0');
+  const totalExpenses = parseFloat(monthly?.totalExpenses ?? '0');
+  const netIncome = parseFloat(monthly?.netIncome ?? '0');
 
   return (
     <div>
@@ -285,10 +248,10 @@ export default function DashboardPage() {
                 <ReceiptIcon size={13} className="text-zinc-400" />
                 <span className="text-xs font-medium text-zinc-400">Transactions</span>
               </div>
-              {reportLoading ? (
+              {dashboardLoading ? (
                 <div className="h-9 w-12 bg-zinc-200 rounded animate-pulse" />
               ) : (
-                <p className="text-3xl font-semibold text-zinc-950">{filtered.length}</p>
+                <p className="text-3xl font-semibold text-zinc-950">{monthly?.transactionCount ?? 0}</p>
               )}
             </Link>
 
@@ -298,22 +261,22 @@ export default function DashboardPage() {
                 <TrendUpIcon size={13} className="text-zinc-400" />
                 <span className="text-xs font-medium text-zinc-400">Total Revenue</span>
               </div>
-              {reportLoading ? (
+              {dashboardLoading ? (
                 <div className="h-9 w-36 bg-zinc-200 rounded animate-pulse mb-3" />
               ) : (
                 <>
                   <p className="text-3xl font-mono font-semibold text-zinc-950 mb-3">
-                    {formatPeso(monthlyStats.totalRevenue)}
+                    {formatPeso(totalRevenue)}
                   </p>
                   <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
                     <span className="flex items-center gap-1.5 text-xs text-zinc-500">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                      <span className="font-mono">{formatPeso(monthlyStats.totalPaid)}</span>
+                      <span className="font-mono">{formatPeso(monthly?.totalPaid ?? '0')}</span>
                       {' '}collected
                     </span>
                     <span className="flex items-center gap-1.5 text-xs text-zinc-500">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                      <span className="font-mono">{formatPeso(monthlyStats.totalBalance)}</span>
+                      <span className="font-mono">{formatPeso(monthly?.totalBalance ?? '0')}</span>
                       {' '}outstanding
                     </span>
                   </div>
@@ -329,20 +292,20 @@ export default function DashboardPage() {
               <div className="flex items-center gap-1.5 mb-3">
                 <CoinIcon size={13} className="text-zinc-400" />
                 <span className="text-xs font-medium text-zinc-400">Net Income</span>
-                {!reportLoading && !expensesLoading && monthlyStats.totalRevenue > 0 && (
+                {!dashboardLoading && totalRevenue > 0 && (
                   <span className={`ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                    monthlyNet >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
+                    netIncome >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
                   }`}>
-                    {monthlyNet >= 0 ? '+' : ''}{((monthlyNet / monthlyStats.totalRevenue) * 100).toFixed(1)}%
+                    {netIncome >= 0 ? '+' : ''}{((netIncome / totalRevenue) * 100).toFixed(1)}%
                   </span>
                 )}
               </div>
-              {reportLoading || expensesLoading ? (
+              {dashboardLoading ? (
                 <div className="h-9 w-28 bg-zinc-200 rounded animate-pulse" />
               ) : (
                 <>
-                  <p className={`text-3xl font-mono font-semibold mb-3 ${monthlyNet >= 0 ? 'text-zinc-950' : 'text-red-500'}`}>
-                    {formatPeso(monthlyNet)}
+                  <p className={`text-3xl font-mono font-semibold mb-3 ${netIncome >= 0 ? 'text-zinc-950' : 'text-red-500'}`}>
+                    {formatPeso(netIncome)}
                   </p>
                   <span className="text-xs font-medium text-red-500">
                     {formatPeso(totalExpenses)} expenses
@@ -360,8 +323,7 @@ export default function DashboardPage() {
             <div className="flex flex-col sm:flex-row divide-y sm:divide-y-0 sm:divide-x divide-zinc-100">
               {METHOD_ORDER.map((key) => {
                 const config = PAYMENT_METHOD_CONFIG[key];
-                // Backend returns pre-computed net GCash and bank_deposit total in collectionsData
-                const amount = parseFloat(collectionsData?.[key] ?? '0');
+                const amount = parseFloat(collections?.[key] ?? '0');
                 const isBankDeposit = key === 'bank_deposit';
                 return (
                   <button
@@ -382,14 +344,14 @@ export default function DashboardPage() {
                             setDepositAmount('');
                             setDepositError('');
                           }}
-                          disabled={!collectionsData || parseFloat(collectionsData['gcash'] ?? '0') <= 0}
+                          disabled={!collections || parseFloat(collections['gcash'] ?? '0') <= 0}
                           className="flex items-center px-2.5 py-1.5 -mr-2 text-[11px] font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors duration-150 disabled:text-zinc-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
                         >
                           + Add
                         </button>
                       )}
                     </div>
-                    {collectionsLoading ? (
+                    {dashboardLoading ? (
                       <div className="h-5 w-16 bg-zinc-200 rounded animate-pulse" />
                     ) : (
                       <p className={`font-mono text-lg font-semibold ${amount > 0 ? 'text-zinc-950' : 'text-zinc-300'}`}>
@@ -410,8 +372,8 @@ export default function DashboardPage() {
           <StatCard
             label="Transactions Today"
             href="/transactions"
-            value={String(dailyStats.count)}
-            loading={dailyLoading}
+            value={String(daily?.count ?? 0)}
+            loading={dashboardLoading}
             icon={ReceiptIcon}
             iconClass="text-zinc-500"
             iconBg="bg-zinc-100"
@@ -421,7 +383,7 @@ export default function DashboardPage() {
             href="/transactions"
             value={formatPeso(todayCollectionTotal)}
             mono
-            loading={dailyLoading}
+            loading={dashboardLoading}
             icon={WalletIcon}
             iconClass="text-blue-600"
             iconBg="bg-blue-50"
@@ -594,15 +556,15 @@ export default function DashboardPage() {
               />
               {depositError && <p className="text-xs text-red-500">{depositError}</p>}
             </div>
-            {collectionsData && parseFloat(collectionsData[depositSource] ?? '0') > 0 && (
+            {collections && parseFloat(collections[depositSource] ?? '0') > 0 && (
               <p className="text-xs text-zinc-400">
-                {depositSource === 'gcash' ? 'GCash' : depositSource === 'card' ? 'Card' : 'Cash'} balance: <span className="font-mono">{formatPeso(collectionsData[depositSource])}</span>
+                {depositSource === 'gcash' ? 'GCash' : depositSource === 'card' ? 'Card' : 'Cash'} balance: <span className="font-mono">{formatPeso(collections[depositSource])}</span>
                 {' '}— will be reduced by this amount.
               </p>
             )}
-            {collectionsData && parseFloat(collectionsData['bank_deposit'] ?? '0') > 0 && (
+            {collections && parseFloat(collections['bank_deposit'] ?? '0') > 0 && (
               <p className="text-xs text-zinc-400">
-                Current bank deposit total: <span className="font-mono">{formatPeso(collectionsData['bank_deposit'])}</span>
+                Current bank deposit total: <span className="font-mono">{formatPeso(collections['bank_deposit'])}</span>
                 {' '}— this amount will be added to it.
               </p>
             )}
