@@ -343,8 +343,13 @@ export default function DashboardPage() {
                             setDepositDialog(key);
                             setDepositAmount('');
                             setDepositError('');
+                            // Auto-select first source with a non-zero balance
+                            const firstAvailable = (['gcash', 'cash', 'card'] as const).find(
+                              (s) => parseFloat(collections?.[s] ?? '0') > 0,
+                            );
+                            if (firstAvailable) setDepositSource(firstAvailable);
                           }}
-                          disabled={!collections || parseFloat(collections['gcash'] ?? '0') <= 0}
+                          disabled={!collections || (parseFloat(collections['gcash'] ?? '0') <= 0 && parseFloat(collections['cash'] ?? '0') <= 0 && parseFloat(collections['card'] ?? '0') <= 0)}
                           className="flex items-center px-2.5 py-1.5 -mr-2 text-[11px] font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors duration-150 disabled:text-zinc-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
                         >
                           + Add
@@ -521,20 +526,27 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-zinc-700">Source</label>
               <div className="flex gap-2">
-                {(['gcash', 'cash', 'card'] as const).map((src) => (
-                  <button
-                    key={src}
-                    type="button"
-                    onClick={() => setDepositSource(src)}
-                    className={`flex-1 px-3 py-2 text-xs font-medium rounded-md border transition-all ${
-                      depositSource === src
-                        ? 'bg-zinc-950 text-white border-zinc-950'
-                        : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
-                    }`}
-                  >
-                    {src === 'gcash' ? 'GCash' : src === 'card' ? 'Card' : 'Cash'}
-                  </button>
-                ))}
+                {(['gcash', 'cash', 'card'] as const).map((src) => {
+                  const srcBalance = parseFloat(collections?.[src] ?? '0');
+                  const isDisabled = srcBalance <= 0;
+                  return (
+                    <button
+                      key={src}
+                      type="button"
+                      onClick={() => setDepositSource(src)}
+                      disabled={isDisabled}
+                      className={`flex-1 px-3 py-2 text-xs font-medium rounded-md border transition-all ${
+                        depositSource === src
+                          ? 'bg-zinc-950 text-white border-zinc-950'
+                          : isDisabled
+                            ? 'bg-zinc-50 text-zinc-300 border-zinc-100 cursor-not-allowed'
+                            : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
+                      }`}
+                    >
+                      {src === 'gcash' ? 'GCash' : src === 'card' ? 'Card' : 'Cash'}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <div className="rounded-md bg-amber-50 border border-amber-100 px-3 py-2">
