@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { type ColumnDef } from '@tanstack/react-table';
 import { CameraIcon, UploadSimpleIcon } from '@phosphor-icons/react';
+import { toast } from 'sonner';
 import { Spinner } from '@/components/ui/spinner';
 import { formatPeso, STATUS_COLORS, cn } from '@/lib/utils';
 import { toTitleCase } from '@/utils/text';
@@ -222,8 +223,14 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
           value={row.original.status}
           onValueChange={(v) => {
             if (v === ITEM_STATUS.CLAIMED) {
-              if (missingAfter) { return; }
-              if (balanceBlocked) { return; }
+              if (missingAfter) {
+                toast.error('Upload an after photo before claiming this item.');
+                return;
+              }
+              if (balanceBlocked) {
+                toast.error('Settle the remaining balance before claiming the last item.');
+                return;
+              }
             }
             onStatusChange(row.original.id, v as ItemStatus);
           }}
