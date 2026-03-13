@@ -79,10 +79,11 @@ export class DepositsService {
 
     const result = await this.upsertSingle(year, month, method, addScaled, branchId, depositOrigin);
 
-    // When recording a bank deposit, subtract the same amount from the source channel
-    if (method === 'bank_deposit' && depositOrigin) {
-      await this.upsertSingle(year, month, depositOrigin, -addScaled, branchId);
-    }
+    // NOTE: Source-channel deduction rows are NOT created here.
+    // The collectionsSummary endpoint handles deductions by querying bank_deposit
+    // rows grouped by origin and subtracting from the corresponding collection
+    // channel. This avoids the non-atomic dual-write problem and the Math.max(0)
+    // clamping bug that prevented negative source-channel rows.
 
     await this.audit.log({
       action: `Recorded deposit: ${method} +${fromScaled(addScaled)} (total: ${fromScaled(result.amount)}) for ${year}-${String(month).padStart(2, '0')}`,
@@ -90,7 +91,7 @@ export class DepositsService {
       entityId: String(result.id),
       performedBy,
       branchId,
-      details: { year, month, method, added: fromScaled(addScaled), total: fromScaled(result.amount), ...(depositOrigin ? { origin: depositOrigin, subtractedFrom: depositOrigin, subtracted: fromScaled(addScaled) } : {}) },
+      details: { year, month, method, added: fromScaled(addScaled), total: fromScaled(result.amount), ...(depositOrigin ? { origin: depositOrigin } : {}) },
     });
 
     return { ...result, amount: fromScaled(result.amount) };
