@@ -172,7 +172,12 @@ export class TransactionsController {
 
   @UseGuards(SupabaseAuthGuard)
   @Post()
-  create(@Body() dto: CreateTransactionDto, @Req() req: AuthedRequest) {
+  async create(@Body() dto: CreateTransactionDto, @Req() req: AuthedRequest) {
+    // Require branch assignment before creating transactions
+    const user = await this.usersService.findById(req.user.id);
+    if (!user?.branchId) {
+      throw new ForbiddenException('You must be assigned to a branch before creating transactions. Please complete onboarding first.');
+    }
     return this.transactionsService.create(dto, 'pos', req.user?.id);
   }
 

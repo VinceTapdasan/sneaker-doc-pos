@@ -76,12 +76,17 @@ export class DepositsController {
       effectiveBranchId = body.branchId ?? user.branchId ?? undefined;
     } else {
       if (!user?.branchId) {
-        throw new ForbiddenException('You must be assigned to a branch before recording deposits.');
+        throw new ForbiddenException('You must be assigned to a branch before recording deposits. Please complete onboarding first.');
       }
       if (body.branchId && body.branchId !== user.branchId) {
         throw new ForbiddenException('You can only record deposits for your own branch.');
       }
       effectiveBranchId = user.branchId;
+    }
+
+    // All deposits MUST be associated with a branch — no orphan deposits
+    if (!effectiveBranchId) {
+      throw new ForbiddenException('A branch must be selected to record deposits. Please complete onboarding or specify a branch.');
     }
 
     return this.depositsService.upsert(
