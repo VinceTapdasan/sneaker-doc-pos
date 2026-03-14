@@ -244,18 +244,22 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
           <SelectContent position="popper">
             {ITEM_STATUSES.map((s) => {
               const disableClaimed = s === ITEM_STATUS.CLAIMED && (missingAfter || balanceBlocked);
+              const disableDone = s === ITEM_STATUS.DONE && row.original.status === ITEM_STATUS.PENDING;
+              const isDisabled = disableClaimed || disableDone;
               return (
                 <SelectItem
                   key={s}
                   value={s}
-                  disabled={disableClaimed}
-                  className={disableClaimed ? 'opacity-40 cursor-not-allowed' : ''}
+                  disabled={isDisabled}
+                  className={isDisabled ? 'opacity-40 cursor-not-allowed' : ''}
                   title={
                     s === ITEM_STATUS.CLAIMED && missingAfter
                       ? 'Upload after photo before claiming'
                       : s === ITEM_STATUS.CLAIMED && balanceBlocked
                         ? 'Settle balance before claiming last item'
-                        : undefined
+                        : s === ITEM_STATUS.DONE && disableDone
+                          ? 'Mark as In Progress before marking as Done'
+                          : undefined
                   }
                 >
                   <StatusBadge status={s} />
