@@ -154,20 +154,11 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
   const txnBalance = txn ? parseFloat(txn.total) - parseFloat(txn.paid) : 0;
 
-  // Transaction-level after photo — satisfies the "after photo" claiming requirement
+  // True if the transaction has at least one transaction-level "after" photo
   const hasTransactionAfterPhoto = useMemo(
     () => (txn?.photos ?? []).some((p) => p.type === 'after'),
     [txn?.photos],
   );
-
-  // The single remaining non-claimed, non-cancelled item — balance gates only this one
-  const lastClaimableItemId = useMemo(() => {
-    if (!txn?.items) return null;
-    const claimable = txn.items.filter(
-      (i) => i.status !== 'claimed' && i.status !== 'cancelled',
-    );
-    return claimable.length === 1 ? claimable[0].id : null;
-  }, [txn?.items]);
 
   function handleSendPickupSms() {
     if (!txn) return;
@@ -234,11 +225,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       loadingItemIds,
       uploadingItemIds,
       disableUploadBefore: true,
-      txnBalance,
-      lastClaimableItemId,
-      hasTransactionAfterPhoto,
     }),
-    [loadingItemIds, uploadingItemIds, handleUploadClick, handleCameraClick, txnBalance, lastClaimableItemId, hasTransactionAfterPhoto],
+    [loadingItemIds, uploadingItemIds, handleUploadClick, handleCameraClick],
   );
   const addPaymentMut = useAddPaymentMutation(id, () => {
     setPaymentDialogOpen(false);
@@ -940,6 +928,14 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
         pendingChange={pendingItemChange}
         customerName={txn.customerName ?? ''}
         loading={updateItemStatusMut.isPending}
+        missingAfterPhoto={
+          pendingItemChange?.newStatus === 'claimed' && (
+            // Multiple items: always warn — txn-level photo may not cover this specific item
+            (txn.items?.length ?? 0) > 1 ||
+            // Single item: only warn if no photo at all
+            (!txn.items?.find((i) => i.id === pendingItemChange.itemId)?.afterImageUrl && !hasTransactionAfterPhoto)
+          )
+        }
         onConfirm={() => {
           if (!pendingItemChange) return;
           setPendingItemChange(null);

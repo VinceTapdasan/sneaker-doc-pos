@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowRightIcon } from '@phosphor-icons/react';
+import { ArrowRightIcon, WarningIcon } from '@phosphor-icons/react';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { toTitleCase } from '@/utils/text';
@@ -19,6 +19,7 @@ interface ItemStatusConfirmDialogProps {
   pendingChange: PendingItemChange | null;
   customerName: string;
   loading: boolean;
+  missingAfterPhoto?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -28,6 +29,7 @@ export function ItemStatusConfirmDialog({
   pendingChange,
   customerName,
   loading,
+  missingAfterPhoto,
   onConfirm,
   onCancel,
 }: ItemStatusConfirmDialogProps) {
@@ -63,6 +65,14 @@ export function ItemStatusConfirmDialog({
               <StatusBadge status={pendingChange.newStatus} />
             </div>
           </div>
+          {pendingChange.newStatus === 'claimed' && missingAfterPhoto && (
+            <div className="flex items-start gap-2 mt-3 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200">
+              <WarningIcon size={15} className="text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700">
+                Make sure to upload an after photo before or after confirming.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </ConfirmDialog>
