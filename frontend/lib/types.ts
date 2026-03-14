@@ -202,6 +202,7 @@ export interface DepositAuditEntry {
     method: string;
     added: string;
     total: string;
+    origin?: string;
   } | null;
 }
 
