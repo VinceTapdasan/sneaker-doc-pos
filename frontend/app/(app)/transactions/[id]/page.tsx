@@ -278,12 +278,10 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               </Button>
             );
           }
-          const cantDelete = txn.status === 'claimed' || parseFloat(txn.paid) > 0;
-          const deleteTitle = txn.status === 'claimed'
-            ? 'Cannot delete a claimed transaction'
-            : parseFloat(txn.paid) > 0
-              ? 'Cannot delete — payment has been recorded'
-              : undefined;
+          const cantDelete = !['pending', 'cancelled'].includes(txn.status);
+          const deleteTitle = cantDelete
+            ? 'Only Pending or Cancelled transactions can be deleted'
+            : undefined;
           return (
             <Button
               variant="danger"
@@ -1009,7 +1007,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
           {/* Warning */}
           <div className="rounded-md bg-red-50 border border-red-100 px-3 py-2">
             <p className="text-xs text-red-700">
-              This will move the transaction to trash. It can be restored later from the Transactions page. Only transactions with no recorded payments and not yet claimed can be deleted.
+              This will move the transaction to trash. It can be restored later from the Transactions page. Only Pending or Cancelled transactions can be deleted.
             </p>
           </div>
         </div>

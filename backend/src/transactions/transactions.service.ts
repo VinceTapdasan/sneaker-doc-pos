@@ -1193,11 +1193,11 @@ export class TransactionsService {
   async remove(id: number, performedBy?: string) {
     const txn = await this.findOne(id);
 
-    if (txn.status === 'claimed') {
-      throw new BadRequestException('Cannot delete a claimed transaction.');
-    }
-    if (toScaled(txn.paid) > 0) {
-      throw new BadRequestException('Cannot delete a transaction with recorded payments.');
+    const deletableStatuses = ['pending', 'cancelled'];
+    if (!deletableStatuses.includes(txn.status)) {
+      throw new BadRequestException(
+        `Cannot delete — transaction status is "${txn.status}". Only Pending or Cancelled transactions can be deleted.`,
+      );
     }
 
     await this.drizzle.db
