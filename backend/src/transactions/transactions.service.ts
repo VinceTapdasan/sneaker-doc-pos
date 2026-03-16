@@ -1140,8 +1140,6 @@ export class TransactionsService {
       throw new BadRequestException('Customer has no phone number on file.');
     }
 
-    const name = txn.customerName ?? 'Customer';
-
     const lines = [
       `Your shoe(s) for Txn #${txn.number} are ready for pickup. Unclaimed after 5 days: Php100/week.`,
       '',
