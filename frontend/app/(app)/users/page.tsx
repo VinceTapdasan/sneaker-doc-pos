@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { LockSimpleIcon } from '@phosphor-icons/react';
 import { toast } from 'sonner';
@@ -21,7 +21,15 @@ import type { AppUser, Branch } from '@/lib/types';
 
 type Tab = 'approved' | 'pending';
 
-export default function UsersPage() {
+export default function UsersPageWrapper() {
+  return (
+    <Suspense>
+      <UsersPage />
+    </Suspense>
+  );
+}
+
+function UsersPage() {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get('tab') === 'pending' ? 'pending' : 'approved';
 
