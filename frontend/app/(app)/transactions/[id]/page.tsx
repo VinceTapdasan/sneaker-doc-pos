@@ -34,7 +34,7 @@ import {
   useUpdateItemStatusMutation,
   useEditTransactionMutation,
   useAddPaymentMutation,
-  useUpdatePaymentMethodMutation,
+
   useDeleteTransactionMutation,
   useRestoreTransactionMutation,
 } from '@/hooks/useTransactionsQuery';
@@ -77,17 +77,6 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
 
-  // Superadmin: edit payment method on an existing payment
-  const [editPaymentDialog, setEditPaymentDialog] = useState<{
-    open: boolean;
-    paymentId: number | null;
-    currentMethod: string;
-    currentRef: string;
-    currentCardBank: string;
-  }>({ open: false, paymentId: null, currentMethod: 'cash', currentRef: '', currentCardBank: '' });
-  const [editPaymentMethod, setEditPaymentMethod] = useState<string>('cash');
-  const [editPaymentRef, setEditPaymentRef] = useState('');
-  const [editCardBank, setEditCardBank] = useState('');
   const [smsSending, setSmsSending] = useState(false);
   const [smsConfirmed, setSmsConfirmed] = useState(false);
 
@@ -266,17 +255,6 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     setPaymentError('');
   });
 
-  const updatePaymentMethodMut = useUpdatePaymentMethodMutation(id, (bankDepositWarning) => {
-    setEditPaymentDialog({ open: false, paymentId: null, currentMethod: 'cash', currentRef: '', currentCardBank: '' });
-    if (bankDepositWarning) {
-      toast.warning('Payment method updated', {
-        description: 'This payment involved bank deposit. Please review the deposits record manually — it may need adjustment.',
-        duration: 8000,
-      });
-    } else {
-      toast.success('Payment method updated');
-    }
-  });
 
   if (isLoading || (isFetching && !txn)) {
     return (
@@ -345,7 +323,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                     })));
                     setEditTxnOpen(true);
                   }}
-                  className="flex items-center gap-1.5 bg-blue-500 text-white rounded-md px-3.5 py-1.5 text-xs font-semibold hover:bg-blue-600 transition-colors duration-150"
+                  className="flex items-center gap-1.5 bg-zinc-900 text-white rounded-md px-3.5 py-1.5 text-xs font-semibold hover:bg-zinc-700 transition-colors duration-150"
                 >
                   <PencilSimpleIcon size={13} weight="bold" />
                   Edit
@@ -877,21 +855,6 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="font-mono text-sm text-zinc-950">{formatPeso(p.amount)}</span>
-                      {isSuperadmin && (
-                        <button
-                          type="button"
-                          title="Edit payment method"
-                          className="text-zinc-400 hover:text-zinc-700 transition-colors"
-                          onClick={() => {
-                            setEditPaymentMethod(p.method);
-                            setEditPaymentRef(p.referenceNumber ?? '');
-                            setEditCardBank(p.cardBank ?? '');
-                            setEditPaymentDialog({ open: true, paymentId: p.id, currentMethod: p.method, currentRef: p.referenceNumber ?? '', currentCardBank: p.cardBank ?? '' });
-                          }}
-                        >
-                          <PencilSimpleIcon size={13} />
-                        </button>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -899,102 +862,6 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             </div>
           )}
 
-          {/* Superadmin: edit payment method dialog */}
-          {isSuperadmin && (
-            <Dialog
-              open={editPaymentDialog.open}
-              onOpenChange={(open) => {
-                if (!open) setEditPaymentDialog({ open: false, paymentId: null, currentMethod: 'cash', currentRef: '', currentCardBank: '' });
-              }}
-            >
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle className="text-base">Edit Payment Method</DialogTitle>
-                  <DialogDescription className="text-xs text-zinc-500">
-                    Correct an incorrect payment method. Amount is unchanged.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-3 pt-1">
-                  {(editPaymentDialog.currentMethod === 'bank_deposit' || editPaymentMethod === 'bank_deposit') && (
-                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                      <WarningIcon size={14} className="shrink-0 mt-0.5" />
-                      <span>
-                        Bank deposit totals are tracked separately in the deposits table. This change won&apos;t automatically update those records — please review the deposits section manually after saving.
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-zinc-700">Payment Method</label>
-                    <Select value={editPaymentMethod} onValueChange={setEditPaymentMethod}>
-                      <SelectTrigger className="h-9 text-sm border-zinc-200">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="gcash">GCash</SelectItem>
-                        <SelectItem value="card">Card</SelectItem>
-                        <SelectItem value="bank_deposit">Bank Deposit</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-zinc-700">Reference # <span className="font-normal text-zinc-400">(optional)</span></label>
-                    <input
-                      type="text"
-                      className="h-9 w-full rounded-md border border-zinc-200 px-3 text-sm outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-1"
-                      placeholder="e.g. GCash ref number"
-                      value={editPaymentRef}
-                      onChange={(e) => setEditPaymentRef(e.target.value)}
-                    />
-                  </div>
-                  {editPaymentMethod === 'card' && (
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-medium text-zinc-700">Card Bank</label>
-                      <Select value={editCardBank} onValueChange={setEditCardBank}>
-                        <SelectTrigger className="h-9 text-sm border-zinc-200">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CARD_BANK_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  <div className="flex gap-2 pt-1">
-                    <Button
-                      size="sm"
-                      variant="dark"
-                      disabled={updatePaymentMethodMut.isPending || (
-                        editPaymentMethod === editPaymentDialog.currentMethod &&
-                        editPaymentRef === editPaymentDialog.currentRef &&
-                        (editPaymentMethod !== 'card' || editCardBank === editPaymentDialog.currentCardBank)
-                      )}
-                      onClick={() => {
-                        if (!editPaymentDialog.paymentId) return;
-                        updatePaymentMethodMut.mutate({
-                          paymentId: editPaymentDialog.paymentId,
-                          method: editPaymentMethod,
-                          referenceNumber: editPaymentRef.trim() || undefined,
-                          cardBank: editPaymentMethod === 'card' ? (editCardBank || undefined) : undefined,
-                        });
-                      }}
-                    >
-                      {updatePaymentMethodMut.isPending ? <Spinner /> : 'Save'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setEditPaymentDialog({ open: false, paymentId: null, currentMethod: 'cash', currentRef: '', currentCardBank: '' })}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
 
           {/* Assigned Staff — all roles can assign */}
           {assignableUsers.length > 0 && (
@@ -1360,57 +1227,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             </DialogHeader>
 
             <div className="space-y-5 pt-1">
-              {/* Items */}
-              {editDraftItems.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Items</p>
-                  <div className="space-y-3">
-                    {editDraftItems.map((item, idx) => {
-                      const hasAnyPayment = (txn.payments ?? []).length > 0;
-                      return (
-                        <div key={item.id} className="rounded-lg border border-zinc-200 p-3 space-y-2">
-                          <p className="text-[11px] font-medium text-zinc-400">Item {idx + 1}</p>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs font-medium text-zinc-700">Shoe Description</label>
-                            <input
-                              type="text"
-                              value={item.shoeDescription}
-                              onChange={(e) => setEditDraftItems((prev) => prev.map((x) => x.id === item.id ? { ...x, shoeDescription: e.target.value } : x))}
-                              className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md text-zinc-950 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                              placeholder="e.g. Nike Air Max 1"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs font-medium text-zinc-700">Service</label>
-                            {hasAnyPayment ? (
-                              <div className="px-3 py-2 text-xs text-zinc-400 bg-zinc-50 border border-zinc-200 rounded-md">
-                                Service locked — payment already recorded
-                              </div>
-                            ) : (
-                              <Select
-                                value={item.serviceId}
-                                onValueChange={(v) => setEditDraftItems((prev) => prev.map((x) => x.id === item.id ? { ...x, serviceId: v } : x))}
-                              >
-                                <SelectTrigger className="h-9 text-sm border-zinc-200">
-                                  <SelectValue placeholder="Select service…" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="__none__">— No change —</SelectItem>
-                                  {(allServices as Service[]).map((s) => (
-                                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Payments */}
+              {/* Payments — shown first */}
               {editDraftPayments.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Payments</p>
@@ -1462,9 +1279,59 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                               type="text"
                               value={pay.referenceNumber}
                               onChange={(e) => setEditDraftPayments((prev) => prev.map((x) => x.id === pay.id ? { ...x, referenceNumber: e.target.value } : x))}
-                              className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md text-zinc-950 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                              className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md text-zinc-950 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/20 focus:border-zinc-900"
                               placeholder="e.g. GCash ref 123456"
                             />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Items */}
+              {editDraftItems.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Items</p>
+                  <div className="space-y-3">
+                    {editDraftItems.map((item, idx) => {
+                      const hasAnyPayment = (txn.payments ?? []).length > 0;
+                      return (
+                        <div key={item.id} className="rounded-lg border border-zinc-200 p-3 space-y-2">
+                          <p className="text-[11px] font-medium text-zinc-400">Item {idx + 1}</p>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs font-medium text-zinc-700">Shoe Description</label>
+                            <input
+                              type="text"
+                              value={item.shoeDescription}
+                              onChange={(e) => setEditDraftItems((prev) => prev.map((x) => x.id === item.id ? { ...x, shoeDescription: e.target.value } : x))}
+                              className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md text-zinc-950 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/20 focus:border-zinc-900"
+                              placeholder="e.g. Nike Air Max 1"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs font-medium text-zinc-700">Service</label>
+                            {hasAnyPayment ? (
+                              <div className="px-3 py-2 text-xs text-zinc-400 bg-zinc-50 border border-zinc-200 rounded-md">
+                                Service locked — payment already recorded
+                              </div>
+                            ) : (
+                              <Select
+                                value={item.serviceId}
+                                onValueChange={(v) => setEditDraftItems((prev) => prev.map((x) => x.id === item.id ? { ...x, serviceId: v } : x))}
+                              >
+                                <SelectTrigger className="h-9 text-sm border-zinc-200">
+                                  <SelectValue placeholder="Select service…" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__">— No change —</SelectItem>
+                                  {(allServices as Service[]).map((s) => (
+                                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
                           </div>
                         </div>
                       );
@@ -1489,6 +1356,26 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                   className="flex-1"
                   disabled={editTxnMut.isPending}
                   onClick={() => {
+                    const origItems = (txn.items ?? []).filter((i) => i.status !== 'cancelled');
+                    const origPayments = txn.payments ?? [];
+                    const itemChanged = editDraftItems.some((draft) => {
+                      const orig = origItems.find((i) => i.id === draft.id);
+                      if (!orig) return false;
+                      const descChanged = draft.shoeDescription.trim() !== (orig.shoeDescription ?? '');
+                      const svcChanged = !!draft.serviceId && draft.serviceId !== '__none__' && parseInt(draft.serviceId, 10) !== orig.service?.id;
+                      return descChanged || svcChanged;
+                    });
+                    const paymentChanged = editDraftPayments.some((draft) => {
+                      const orig = origPayments.find((p) => p.id === draft.id);
+                      if (!orig) return false;
+                      return draft.method !== orig.method ||
+                        draft.referenceNumber.trim() !== (orig.referenceNumber ?? '') ||
+                        draft.cardBank !== (orig.cardBank ?? '');
+                    });
+                    if (!itemChanged && !paymentChanged) {
+                      toast.info('No changes to save');
+                      return;
+                    }
                     editTxnMut.mutate({
                       items: editDraftItems.map((i) => ({
                         id: i.id,
