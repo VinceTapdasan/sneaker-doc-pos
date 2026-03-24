@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { PlusIcon } from '@phosphor-icons/react';
 import { PageHeader } from '@/components/ui/page-header';
@@ -47,6 +47,7 @@ export default function ServicesPage() {
   const [editTarget, setEditTarget] = useState<Service | null>(null);
   const [form, setForm] = useState<ServiceForm>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
+  const origFormRef = useRef<ServiceForm | null>(null);
 
   const { data: services = [], isLoading } = useServicesQuery();
 
@@ -55,6 +56,8 @@ export default function ServicesPage() {
   const updateMut = useUpdateServiceMutation(closeDialog);
   const deleteMut = useDeleteServiceMutation();
   const isBusy = createMut.isPending || updateMut.isPending;
+  const isUnchanged = editTarget !== null && origFormRef.current !== null
+    && JSON.stringify(form) === JSON.stringify(origFormRef.current);
 
   useEffect(() => {
     if (searchParams.get('new') === '1') {
@@ -72,7 +75,9 @@ export default function ServicesPage() {
 
   const openEdit = (s: Service) => {
     setEditTarget(s);
-    setForm({ name: s.name, type: s.type, price: s.price });
+    const snap: ServiceForm = { name: s.name, type: s.type, price: s.price };
+    origFormRef.current = snap;
+    setForm(snap);
     setDialogOpen(true);
   };
 
@@ -183,7 +188,7 @@ export default function ServicesPage() {
               <Button
                 size="sm"
                 className="flex-1"
-                disabled={isBusy || !form.name.trim() || !form.price}
+                disabled={isBusy || !form.name.trim() || !form.price || isUnchanged}
                 onClick={handleSave}
               >
                 {isBusy ? <Spinner /> : 'Save'}

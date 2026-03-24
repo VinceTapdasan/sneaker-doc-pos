@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { PlusIcon } from '@phosphor-icons/react';
@@ -45,6 +45,7 @@ export default function PromosPage() {
   const [editTarget, setEditTarget] = useState<Promo | null>(null);
   const [form, setForm] = useState<PromoForm>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Promo | null>(null);
+  const origFormRef = useRef<PromoForm | null>(null);
 
   const { data: promos = [], isLoading } = usePromosQuery();
 
@@ -53,6 +54,8 @@ export default function PromosPage() {
   const updateMut = useUpdatePromoMutation(closeDialog);
   const deleteMut = useDeletePromoMutation();
   const isBusy = createMut.isPending || updateMut.isPending;
+  const isUnchanged = editTarget !== null && origFormRef.current !== null
+    && JSON.stringify(form) === JSON.stringify(origFormRef.current);
 
   useEffect(() => {
     if (searchParams.get('new') === '1') {
@@ -70,14 +73,16 @@ export default function PromosPage() {
 
   const openEdit = (p: Promo) => {
     setEditTarget(p);
-    setForm({
+    const snap: PromoForm = {
       name: p.name,
       code: p.code,
       percent: p.percent,
       dateFrom: p.dateFrom ?? '',
       dateTo: p.dateTo ?? '',
       maxUses: p.maxUses != null ? String(p.maxUses) : '',
-    });
+    };
+    origFormRef.current = snap;
+    setForm(snap);
     setDialogOpen(true);
   };
 
@@ -213,7 +218,7 @@ export default function PromosPage() {
               <Button
                 size="sm"
                 className="flex-1"
-                disabled={isBusy || !form.name.trim() || !form.code.trim() || !form.percent}
+                disabled={isBusy || !form.name.trim() || !form.code.trim() || !form.percent || isUnchanged}
                 onClick={handleSave}
               >
                 {isBusy ? <Spinner /> : 'Save'}
