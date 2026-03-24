@@ -16,7 +16,7 @@ export function usePromosQuery() {
 export function useCreatePromoMutation(onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string; code: string; percent: string; dateFrom?: string; dateTo?: string }) =>
+    mutationFn: (body: { name: string; code: string; percent: string; dateFrom?: string; dateTo?: string; maxUses?: number }) =>
       api.promos.create(body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PROMOS_KEY });
@@ -30,7 +30,7 @@ export function useCreatePromoMutation(onSuccess?: () => void) {
 export function useUpdatePromoMutation(onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: number; isActive?: boolean; name?: string; code?: string; percent?: string; dateFrom?: string; dateTo?: string }) =>
+    mutationFn: ({ id, ...body }: { id: number; isActive?: boolean; name?: string; code?: string; percent?: string; dateFrom?: string; dateTo?: string; maxUses?: number | null }) =>
       api.promos.update(id, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PROMOS_KEY });
