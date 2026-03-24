@@ -64,7 +64,7 @@ export default function ReportsPage() {
 
   const { data: currentUser } = useCurrentUserQuery();
   const isSuperadmin = currentUser?.userType === 'superadmin';
-  const { data: branches = [] } = useBranchesQuery();
+  const { data: branches = [] } = useBranchesQuery(true);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['reports-summary', year, month, branchId],
