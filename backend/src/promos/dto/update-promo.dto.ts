@@ -1,4 +1,4 @@
-import { IsString, IsNumberString, IsOptional, IsBoolean, Matches } from 'class-validator';
+import { IsString, IsNumberString, IsOptional, IsBoolean, IsInt, Min, ValidateIf, Matches } from 'class-validator';
 
 export class UpdatePromoDto {
   @IsOptional()
@@ -26,4 +26,10 @@ export class UpdatePromoDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @ValidateIf((o) => o.maxUses !== null)
+  @IsInt()
+  @Min(1)
+  maxUses?: number | null;
 }

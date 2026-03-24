@@ -135,7 +135,8 @@ export default function DashboardPage() {
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
   const isSuperadmin = currentUser?.userType === 'superadmin';
 
-  const { data: branches = [] } = useBranchesQuery(false);
+  // activeOnly=true — exclude soft-deleted (isActive=false) branches from the filter dropdown
+  const { data: branches = [] } = useBranchesQuery(true);
 
   const branchId = branchFilter !== 'all' ? parseInt(branchFilter, 10) : undefined;
 
@@ -168,7 +169,7 @@ export default function DashboardPage() {
     <div>
       <PageHeader
         title="Dashboard"
-        subtitle={isAdmin ? 'Monthly financial summary' : "Today's overview"}
+        subtitle={isAdmin ? (year === 0 ? 'All-time financial summary' : 'Monthly financial summary') : "Today's overview"}
         action={
           isAdmin ? (
             <div className={`grid gap-2 ${isSuperadmin && branches.length > 0 ? 'grid-cols-3' : 'grid-cols-2'} sm:flex sm:items-center sm:flex-wrap sm:justify-end`}>
@@ -185,22 +186,32 @@ export default function DashboardPage() {
                   </SelectContent>
                 </Select>
               )}
-              <Select value={String(month)} onValueChange={(v) => setMonth(parseInt(v, 10))}>
-                <SelectTrigger className="h-9 text-sm w-full sm:w-32 border-zinc-200">
+              {year !== 0 && (
+                <Select value={String(month)} onValueChange={(v) => setMonth(parseInt(v, 10))}>
+                  <SelectTrigger className="h-9 text-sm w-full sm:w-32 border-zinc-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Overall</SelectItem>
+                    {MONTHS.map((m, i) => (
+                      <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <Select
+                value={String(year)}
+                onValueChange={(v) => {
+                  const y = parseInt(v, 10);
+                  setYear(y);
+                  if (y === 0) setMonth(0); // all-time always has month=0
+                }}
+              >
+                <SelectTrigger className="h-9 text-sm w-full sm:w-28 border-zinc-200">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="0">Overall</SelectItem>
-                  {MONTHS.map((m, i) => (
-                    <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={String(year)} onValueChange={(v) => setYear(parseInt(v, 10))}>
-                <SelectTrigger className="h-9 text-sm w-full sm:w-24 border-zinc-200">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
+                  <SelectItem value="0">All Time</SelectItem>
                   {[2024, 2025, 2026].map((y) => (
                     <SelectItem key={y} value={String(y)}>{y}</SelectItem>
                   ))}
@@ -514,7 +525,7 @@ export default function DashboardPage() {
         onClose={() => setHistoryDialog({ open: false })}
         year={year}
         month={month}
-        monthLabel={month === 0 ? `${year} Overall` : `${MONTHS[(month || 1) - 1]} ${year}`}
+        monthLabel={year === 0 ? 'All Time' : month === 0 ? `${year} Overall` : `${MONTHS[(month || 1) - 1]} ${year}`}
         branchId={branchId}
       />
 
@@ -525,7 +536,7 @@ export default function DashboardPage() {
           onClose={() => setCollectionHistoryDialog(null)}
           year={year}
           month={month}
-          monthLabel={month === 0 ? `${year} Overall` : `${MONTHS[(month || 1) - 1]} ${year}`}
+          monthLabel={year === 0 ? 'All Time' : month === 0 ? `${year} Overall` : `${MONTHS[(month || 1) - 1]} ${year}`}
           method={collectionHistoryDialog.method}
           methodLabel={collectionHistoryDialog.methodLabel}
           branchId={branchId}
@@ -541,7 +552,7 @@ export default function DashboardPage() {
           <DialogHeader>
             <DialogTitle className="text-base">Record Bank Deposit</DialogTitle>
             <DialogDescription className="text-xs text-zinc-400">
-              {month === 0 ? `${year} Overall` : `${MONTHS[(month || 1) - 1]} ${year}`}
+              {year === 0 ? 'All Time' : month === 0 ? `${year} Overall` : `${MONTHS[(month || 1) - 1]} ${year}`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 pt-1">

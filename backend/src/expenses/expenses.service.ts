@@ -141,6 +141,7 @@ export class ExpensesService {
         method: dto.method,
         amount: toScaled(dto.amount),
         staffId: performedBy ?? null,
+        photoUrl: dto.photoUrl ?? null,
       })
       .returning();
 
@@ -151,7 +152,14 @@ export class ExpensesService {
       source,
       performedBy,
       branchId,
-      details: { amount: created.amount, category: created.category },
+      details: {
+        amount: fromScaled(created.amount),
+        category: created.category ?? null,
+        note: created.note ?? null,
+        method: created.method,
+        dateKey: created.dateKey,
+        hasPhoto: created.photoUrl != null,
+      },
     });
 
     return { ...created, amount: fromScaled(created.amount) };
@@ -180,6 +188,14 @@ export class ExpensesService {
       source: 'pos',
       performedBy,
       branchId,
+      details: {
+        fields: Object.keys(dto),
+        ...(dto.amount !== undefined && { amount: fromScaled(updated.amount) }),
+        ...(dto.category !== undefined && { category: updated.category ?? null }),
+        ...(dto.note !== undefined && { note: updated.note ?? null }),
+        ...(dto.method !== undefined && { method: updated.method }),
+        ...('photoUrl' in dto && { hasPhoto: updated.photoUrl != null }),
+      },
     });
 
     return { ...updated, amount: fromScaled(updated.amount) };

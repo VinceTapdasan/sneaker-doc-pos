@@ -60,6 +60,7 @@ export const promos = pgTable('promos', {
   dateFrom: date('date_from'),
   dateTo: date('date_to'),
   isActive: boolean('is_active').default(true).notNull(),
+  maxUses: integer('max_uses'),  // null = unlimited; usage count computed on the fly via JOIN
   createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
@@ -130,6 +131,11 @@ export const claimPayments = pgTable('claim_payments', {
   amount: bigint('amount', { mode: 'number' }).notNull(),
   referenceNumber: varchar('reference_number', { length: 100 }),
   paidAt: timestamp('paid_at', { withTimezone: true }).defaultNow().notNull(),
+  // Card fee fields — only populated when method='card'
+  // cardBank: null = generic (3%), 'bpi' = BPI (3.5%), extensible via CARD_BANK_FEES config
+  cardBank: varchar('card_bank', { length: 50 }),
+  fee: bigint('fee', { mode: 'number' }).notNull().default(0),        // scaled, same unit as amount
+  feePercent: numeric('fee_percent', { precision: 5, scale: 2 }).notNull().default('0'), // e.g. '3.50'
 });
 
 // ---------------------------------------------------------------------------
@@ -144,6 +150,7 @@ export const expenses = pgTable('expenses', {
   source: varchar('source', { length: 20 }).default('pos').notNull(), // pos | admin
   amount: bigint('amount', { mode: 'number' }).notNull(),
   staffId: uuid('staff_id').references(() => users.id, { onDelete: 'set null' }), // null = admin expense
+  photoUrl: varchar('photo_url', { length: 1000 }), // optional receipt photo
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),

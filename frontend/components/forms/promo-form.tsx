@@ -21,6 +21,10 @@ const schema = z.object({
     ),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
+  maxUses: z.string().optional().refine(
+    (v) => !v || (parseInt(v, 10) >= 1 && !isNaN(parseInt(v, 10))),
+    'Must be a number ≥ 1',
+  ),
 }).refine(
   (data) => {
     if (data.dateFrom && data.dateTo) {
@@ -47,7 +51,7 @@ export function PromoForm({ onSuccess, onCancel }: PromoFormProps) {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { name: '', code: '', percent: '', dateFrom: '', dateTo: '' },
+    defaultValues: { name: '', code: '', percent: '', dateFrom: '', dateTo: '', maxUses: '' },
   });
 
   const createMut = useMutation({
@@ -58,6 +62,7 @@ export function PromoForm({ onSuccess, onCancel }: PromoFormProps) {
         percent: data.percent,
         dateFrom: data.dateFrom || undefined,
         dateTo: data.dateTo || undefined,
+        maxUses: data.maxUses ? parseInt(data.maxUses, 10) : undefined,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['promos'] });
@@ -112,7 +117,22 @@ export function PromoForm({ onSuccess, onCancel }: PromoFormProps) {
 
         <div className="flex flex-col gap-1.5">
           <Input
-            label="Valid From"
+            label="Max Uses (optional)"
+            type="number"
+            min="1"
+            step="1"
+            placeholder="Unlimited"
+            {...register('maxUses')}
+          />
+          {errors.maxUses && <p className="text-xs text-red-500">{errors.maxUses.message}</p>}
+          <p className="text-[11px] text-zinc-400">Leave blank for unlimited uses</p>
+        </div>
+
+        <div />
+
+        <div className="flex flex-col gap-1.5">
+          <Input
+            label="Valid From (optional)"
             type="date"
             {...register('dateFrom')}
           />
@@ -120,7 +140,7 @@ export function PromoForm({ onSuccess, onCancel }: PromoFormProps) {
 
         <div className="flex flex-col gap-1.5">
           <Input
-            label="Valid Until"
+            label="Valid Until (optional)"
             type="date"
             {...register('dateTo')}
           />

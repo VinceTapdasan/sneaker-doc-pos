@@ -86,14 +86,14 @@ export const api = {
     getByNumber: (number: string) => apiFetch<Transaction>(`/transactions/number/${number}`),
     create: (body: Partial<Omit<Transaction, 'items'>> & { items?: Record<string, unknown>[]; isExistingCustomer?: boolean; customerStreetName?: string; customerCity?: string; customerCountry?: string }) =>
       apiFetch<Transaction>('/transactions', { method: 'POST', body: JSON.stringify(body) }),
-    update: (id: number, body: Partial<Transaction>) =>
+    update: (id: number, body: Partial<Transaction> & { promoId?: number | null }) =>
       apiFetch<Transaction>(`/transactions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     updateItem: (txnId: number, itemId: number, body: Partial<TransactionItem>) =>
       apiFetch<TransactionItem>(`/transactions/${txnId}/items/${itemId}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
-    addPayment: (id: number, body: { method: string; amount: string; referenceNumber?: string }) =>
+    addPayment: (id: number, body: { method: string; amount: string; referenceNumber?: string; cardBank?: string }) =>
       apiFetch<ClaimPayment>(`/transactions/${id}/payments`, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -103,6 +103,11 @@ export const api = {
     savePhoto: (id: number, body: { type: 'before' | 'after'; url: string }) =>
       apiFetch<TransactionPhoto>(`/transactions/${id}/photos`, {
         method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    updatePaymentMethod: (txnId: number, paymentId: number, body: { method: string; referenceNumber?: string; cardBank?: string }) =>
+      apiFetch<ClaimPayment & { bankDepositWarning: boolean }>(`/transactions/${txnId}/payments/${paymentId}/method`, {
+        method: 'PATCH',
         body: JSON.stringify(body),
       }),
     deletePhoto: (txnId: number, photoId: number) =>
@@ -144,6 +149,11 @@ export const api = {
     update: (id: number, body: Partial<Expense>) =>
       apiFetch<Expense>(`/expenses/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     delete: (id: number) => apiFetch<void>(`/expenses/${id}`, { method: 'DELETE' }),
+    uploadUrl: (extension: string) =>
+      apiFetch<{ signedUrl: string; token: string; path: string; publicUrl: string }>(
+        '/expenses/upload-url',
+        { method: 'POST', body: JSON.stringify({ extension }) },
+      ),
   },
 
   audit: {

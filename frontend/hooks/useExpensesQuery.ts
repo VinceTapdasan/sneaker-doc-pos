@@ -35,7 +35,7 @@ export function useMonthlyExpensesQuery(year: number, month: number, options?: {
 export function useCreateExpenseMutation(date: string, onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { method?: string; category?: string; note?: string; amount: string }) =>
+    mutationFn: (body: { method?: string; category?: string; note?: string; amount: string; photoUrl?: string }) =>
       api.expenses.create({ ...body, dateKey: date }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: expensesKey(date) });
@@ -50,7 +50,7 @@ export function useCreateExpenseMutation(date: string, onSuccess?: () => void) {
 export function useUpdateExpenseMutation(date: string, onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: number; category?: string; note?: string; method?: string; amount?: string }) =>
+    mutationFn: ({ id, ...body }: { id: number; category?: string; note?: string; method?: string; amount?: string; photoUrl?: string | null }) =>
       api.expenses.update(id, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: expensesKey(date) });

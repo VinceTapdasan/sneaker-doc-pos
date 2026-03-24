@@ -11,4 +11,10 @@ export class AddPaymentDto {
   @IsOptional()
   @IsString()
   referenceNumber?: string;
+
+  // Only relevant when method='card'. null/undefined = default rate (3%).
+  // Server uses this to look up the fee rate from CARD_BANK_FEES config.
+  @IsOptional()
+  @IsString()
+  cardBank?: string;
 }

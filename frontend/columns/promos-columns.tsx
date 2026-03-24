@@ -26,6 +26,7 @@ const isPromoActive = (p: Promo): boolean => {
   const today = new Date().toISOString().split('T')[0];
   if (p.dateFrom && p.dateFrom > today) return false;
   if (p.dateTo && p.dateTo < today) return false;
+  if (p.maxUses != null && (p.usageCount ?? 0) >= p.maxUses) return false;
   return true;
 };
 
@@ -67,6 +68,24 @@ export const createPromoColumns = ({
           {p.dateFrom || p.dateTo
             ? `${formatDate(p.dateFrom)} — ${formatDate(p.dateTo)}`
             : 'No expiry'}
+        </span>
+      );
+    },
+  },
+  {
+    id: 'usage',
+    header: 'Uses',
+    cell: ({ row }) => {
+      const p = row.original;
+      if (p.maxUses == null) {
+        return <span className="text-xs text-zinc-400">{p.usageCount ?? 0} / ∞</span>;
+      }
+      const used = p.usageCount ?? 0;
+      const exhausted = used >= p.maxUses;
+      return (
+        <span className={`text-xs font-mono ${exhausted ? 'text-red-500 font-medium' : 'text-zinc-600'}`}>
+          {used} / {p.maxUses}
+          {exhausted && <span className="ml-1 text-[10px] bg-red-100 text-red-600 px-1 py-0.5 rounded">full</span>}
         </span>
       );
     },

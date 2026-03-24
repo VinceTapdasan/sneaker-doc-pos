@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ReceiptIcon } from '@phosphor-icons/react';
+import { ReceiptIcon, CameraIcon, XCircleIcon } from '@phosphor-icons/react';
 import { formatPeso, today, cn } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { api } from '@/lib/api';
+import { putToStorage } from '@/hooks/useUploadPhoto';
+import { isValidImageType, RAW_MAX_SIZE_MB, compressWithFallback } from '@/utils/photo';
+import { toast } from 'sonner';
 import type { Expense } from '@/lib/types';
 
 const PAYMENT_METHODS = [
@@ -38,9 +42,10 @@ interface ExpenseForm {
   note: string;
   method: string;
   amount: string;
+  photoUrl: string;
 }
 
-const EMPTY_FORM: ExpenseForm = { category: '', note: '', method: '', amount: '' };
+const EMPTY_FORM: ExpenseForm = { category: '', note: '', method: '', amount: '', photoUrl: '' };
 
 const INPUT_CLS = 'w-full px-3 py-2 text-sm border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
 
@@ -52,6 +57,9 @@ export default function ExpensesPage() {
   const [form, setForm] = useState<ExpenseForm>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
 
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
 
@@ -62,7 +70,28 @@ export default function ExpensesPage() {
   const createMut = useCreateExpenseMutation(selectedDate, closeDialog);
   const updateMut = useUpdateExpenseMutation(selectedDate, closeDialog);
   const deleteMut = useDeleteExpenseMutation(selectedDate);
-  const isBusy = createMut.isPending || updateMut.isPending;
+  const isBusy = createMut.isPending || updateMut.isPending || photoUploading;
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!e.target) return;
+    // Reset input so the same file can be reselected
+    (e.target as HTMLInputElement).value = '';
+    if (!file) return;
+    if (!isValidImageType(file)) { toast.error('Only image files allowed (JPEG, PNG, WebP, HEIC)'); return; }
+    if (file.size > RAW_MAX_SIZE_MB * 1024 * 1024) { toast.error(`File must be under ${RAW_MAX_SIZE_MB}MB`); return; }
+    setPhotoUploading(true);
+    try {
+      const { blob } = await compressWithFallback(file);
+      const { signedUrl, publicUrl } = await api.expenses.uploadUrl('jpg');
+      await putToStorage(signedUrl, blob);
+      setForm((f) => ({ ...f, photoUrl: publicUrl }));
+    } catch (err) {
+      toast.error('Photo upload failed', { description: (err as Error).message });
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
 
   useEffect(() => {
     if (searchParams.get('new') === '1') {
@@ -85,6 +114,7 @@ export default function ExpensesPage() {
       note: e.note ?? '',
       method: e.method ?? '',
       amount: e.amount ?? '',
+      photoUrl: e.photoUrl ?? '',
     });
     setDialogOpen(true);
   };
@@ -98,6 +128,7 @@ export default function ExpensesPage() {
         note: form.note || undefined,
         method: form.method || undefined,
         amount: form.amount || undefined,
+        photoUrl: form.photoUrl || null,
       });
     } else {
       createMut.mutate({
@@ -105,6 +136,7 @@ export default function ExpensesPage() {
         note: form.note || undefined,
         method: form.method || undefined,
         amount: form.amount,
+        photoUrl: form.photoUrl || undefined,
       });
     }
   };
@@ -213,6 +245,42 @@ export default function ExpensesPage() {
                 className={`${INPUT_CLS} font-mono`}
               />
             </div>
+
+            {/* Receipt photo */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-zinc-700">Receipt Photo <span className="text-zinc-400 font-normal">(optional)</span></label>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoSelect}
+              />
+              {form.photoUrl ? (
+                <div className="relative w-full h-28 rounded-md overflow-hidden border border-zinc-200 bg-zinc-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={form.photoUrl} alt="Receipt" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, photoUrl: '' }))}
+                    className="absolute top-1 right-1 bg-white rounded-full shadow p-0.5 text-zinc-500 hover:text-red-500 transition-colors"
+                  >
+                    <XCircleIcon size={18} weight="fill" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={photoUploading}
+                  onClick={() => photoInputRef.current?.click()}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-500 border border-dashed border-zinc-300 rounded-md hover:border-zinc-400 hover:text-zinc-700 transition-colors disabled:opacity-50"
+                >
+                  {photoUploading ? <Spinner /> : <CameraIcon size={15} />}
+                  {photoUploading ? 'Uploading…' : 'Attach receipt'}
+                </button>
+              )}
+            </div>
+
             <div className="flex gap-2 pt-1">
               <Button
                 size="sm"

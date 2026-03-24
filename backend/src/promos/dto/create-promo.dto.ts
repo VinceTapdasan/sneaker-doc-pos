@@ -1,4 +1,4 @@
-import { IsString, IsNumberString, IsOptional, IsBoolean, Matches } from 'class-validator';
+import { IsString, IsNumberString, IsOptional, IsBoolean, IsInt, Min, Matches } from 'class-validator';
 
 export class CreatePromoDto {
   @IsString()
@@ -23,4 +23,9 @@ export class CreatePromoDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxUses?: number | null;
 }

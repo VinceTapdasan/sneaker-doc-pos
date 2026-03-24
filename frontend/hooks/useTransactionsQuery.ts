@@ -105,7 +105,7 @@ export function useUpdateTransactionMutation(id: string) {
   const numericId = parseInt(id, 10);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { newPickupDate?: string | null; note?: string | null; paid?: string; staffId?: string | null }) =>
+    mutationFn: (data: { newPickupDate?: string | null; note?: string | null; paid?: string; staffId?: string | null; promoId?: number | null }) =>
       api.transactions.update(numericId, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: transactionDetailKey(id) });
@@ -146,8 +146,8 @@ export function useAddPaymentMutation(txnId: string, onSuccess?: () => void) {
   const numericTxnId = parseInt(txnId, 10);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ method, amount, referenceNumber }: { method: PaymentMethod; amount: string; referenceNumber?: string }) =>
-      api.transactions.addPayment(numericTxnId, { method, amount, referenceNumber }),
+    mutationFn: ({ method, amount, referenceNumber, cardBank }: { method: PaymentMethod; amount: string; referenceNumber?: string; cardBank?: string }) =>
+      api.transactions.addPayment(numericTxnId, { method, amount, referenceNumber, cardBank }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: transactionDetailKey(txnId) });
       qc.invalidateQueries({ queryKey: ['today-collections'] });
@@ -155,6 +155,21 @@ export function useAddPaymentMutation(txnId: string, onSuccess?: () => void) {
       onSuccess?.();
     },
     onError: (err: Error) => toast.error('Failed to record payment', { description: err.message }),
+  });
+}
+
+export function useUpdatePaymentMethodMutation(txnId: string, onSuccess?: (bankDepositWarning: boolean) => void) {
+  const numericTxnId = parseInt(txnId, 10);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ paymentId, method, referenceNumber, cardBank }: { paymentId: number; method: string; referenceNumber?: string; cardBank?: string }) =>
+      api.transactions.updatePaymentMethod(numericTxnId, paymentId, { method, referenceNumber, cardBank }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: transactionDetailKey(txnId) });
+      qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      onSuccess?.(data.bankDepositWarning);
+    },
+    onError: (err: Error) => toast.error('Failed to update payment method', { description: err.message }),
   });
 }
 

@@ -27,6 +27,22 @@ export const PAYMENT_METHOD = {
 
 export type PaymentMethod = typeof PAYMENT_METHOD[keyof typeof PAYMENT_METHOD];
 
+// ---------------------------------------------------------------------------
+// Card bank options — must mirror backend CARD_BANK_FEES in db/constants.ts
+// Frontend uses for display only; authoritative fee always computed server-side
+// ---------------------------------------------------------------------------
+export const CARD_BANK_OPTIONS = [
+  { value: '', label: 'Default (3%)' },
+  { value: 'bpi', label: 'BPI (3.5%)' },
+] as const;
+
+/** Display-only fee rate for the payment dialog preview.
+ *  Actual authoritative fee is computed and stored by the backend. */
+export function getCardFeeRatePreview(cardBank: string): number {
+  if (cardBank === 'bpi') return 0.035;
+  return 0.03;
+}
+
 export const SERVICE_TYPE = {
   PRIMARY: 'primary',
   ADD_ON: 'add_on',

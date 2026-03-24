@@ -18,6 +18,7 @@ import {
   or,
   isNotNull,
   isNull,
+  getTableColumns,
 } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import {
@@ -37,6 +38,7 @@ import {
   TRANSACTION_STATUS,
   AUDIT_TYPE,
   type AuditType,
+  computeCardFee,
 } from '../db/constants';
 import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
@@ -47,6 +49,7 @@ import { AddPaymentDto } from './dto/add-payment.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 import { AddPhotoDto } from './dto/add-photo.dto';
 import { toScaled, fromScaled } from '../utils/money';
+import { PromosService } from '../promos/promos.service';
 
 export interface FindAllParams {
   page?: number;
@@ -70,6 +73,7 @@ export class TransactionsService {
     private readonly audit: AuditService,
     private readonly users: UsersService,
     private readonly sms: SmsService,
+    private readonly promosService: PromosService,
   ) {}
 
   // Generate next zero-padded transaction number using advisory lock to prevent race conditions.
@@ -236,6 +240,11 @@ export class TransactionsService {
       }
     }
 
+    // Validate promo usage limit before creating
+    if (dto.promoId) {
+      await this.promosService.validatePromoApplicable(dto.promoId);
+    }
+
     // Resolve branch from the performing user
     const branchId = performedBy
       ? await this.users.getBranchId(performedBy)
@@ -254,7 +263,7 @@ export class TransactionsService {
         paid: toScaled(dto.paid ?? '0'),
         promoId: dto.promoId ?? null,
         branchId: branchId ?? null,
-        staffId: dto.staffId ?? performedBy ?? null,
+        staffId: dto.staffId ?? null, // do not auto-assign to creator — leave unassigned unless explicitly set
         updatedAt: new Date(),
       })
       .returning();
@@ -403,6 +412,37 @@ export class TransactionsService {
       ...(dto.paid !== undefined && { paid: toScaled(dto.paid) }),
       updatedAt: new Date(),
     };
+
+    // When promoId changes, recalculate total from non-cancelled items
+    // This handles: apply new promo, switch promo, remove promo (null)
+    const promoIdChanged = 'promoId' in dto && dto.promoId !== existing.promoId;
+
+    // Validate usage limit before applying a new promo
+    if (promoIdChanged && dto.promoId != null) {
+      await this.promosService.validatePromoApplicable(dto.promoId);
+    }
+    if (promoIdChanged) {
+      const items = await this.drizzle.db
+        .select()
+        .from(transactionItems)
+        .where(eq(transactionItems.transactionId, id));
+      const rawSubtotalScaled = items
+        .filter((i) => i.status !== 'cancelled')
+        .reduce((sum, i) => sum + (i.price ?? 0), 0);
+      let newTotalScaled = rawSubtotalScaled;
+      const newPromoId = dto.promoId ?? null;
+      if (newPromoId) {
+        const [promo] = await this.drizzle.db
+          .select()
+          .from(promos)
+          .where(eq(promos.id, newPromoId));
+        if (promo) {
+          const discountFactor = 1 - parseFloat(promo.percent) / 100;
+          newTotalScaled = Math.round(rawSubtotalScaled * discountFactor);
+        }
+      }
+      setValues.total = newTotalScaled;
+    }
     if (
       dto.status === TRANSACTION_STATUS.CLAIMED &&
       prevStatus !== TRANSACTION_STATUS.CLAIMED
@@ -453,6 +493,14 @@ export class TransactionsService {
         to: dto.staffId ?? null,
         assignedFullName: assignedStaff?.fullName ?? null,
         assignedEmail: assignedStaff?.email ?? null,
+      };
+    } else if (promoIdChanged) {
+      auditType = AUDIT_TYPE.TRANSACTION_UPDATED;
+      action = 'promo_change';
+      auditDetails = {
+        promoFrom: existing.promoId ?? null,
+        promoTo: dto.promoId ?? null,
+        totalAfter: fromScaled(updated.total),
       };
     }
 
@@ -530,7 +578,10 @@ export class TransactionsService {
       .toISOString()
       .split('T')[0];
     const rows = await this.drizzle.db
-      .select()
+      .select({
+        ...getTableColumns(transactions),
+        itemCount: sql<number>`CAST((SELECT COUNT(*) FROM transaction_items WHERE transaction_id = ${transactions.id} AND status != 'cancelled') AS INT)`,
+      })
       .from(transactions)
       .where(
         and(
@@ -553,7 +604,8 @@ export class TransactionsService {
         ),
       )
       .orderBy(sql`COALESCE(${transactions.newPickupDate}, ${transactions.pickupDate}) ASC`);
-    return rows.map(mapTxn);
+    return (rows as Array<typeof transactions.$inferSelect & { itemCount: number }>)
+      .map((r) => ({ ...mapTxn(r), itemCount: Number(r.itemCount) }));
   }
 
   async findUpcomingByMonth(year: number, month: number, branchId?: number) {
@@ -561,7 +613,10 @@ export class TransactionsService {
     const lastDay = new Date(year, month, 0).getDate();
     const to = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
     const rows = await this.drizzle.db
-      .select()
+      .select({
+        ...getTableColumns(transactions),
+        itemCount: sql<number>`CAST((SELECT COUNT(*) FROM transaction_items WHERE transaction_id = ${transactions.id} AND status != 'cancelled') AS INT)`,
+      })
       .from(transactions)
       .where(
         and(
@@ -579,33 +634,36 @@ export class TransactionsService {
         ),
       )
       .orderBy(sql`COALESCE(${transactions.newPickupDate}, ${transactions.pickupDate}) ASC`);
-    return rows.map(mapTxn);
+    return (rows as Array<typeof transactions.$inferSelect & { itemCount: number }>)
+      .map((r) => ({ ...mapTxn(r), itemCount: Number(r.itemCount) }));
   }
 
   async collectionsSummary(year: number, month: number, branchId?: number) {
-    // month=0 means full year
-    const from = month === 0
-      ? new Date(`${year}-01-01T00:00:00`)
-      : new Date(`${year}-${String(month).padStart(2, '0')}-01T00:00:00`);
-    const to = month === 0
-      ? new Date(`${year}-12-31T23:59:59`)
-      : (() => {
-          const lastDay = new Date(year, month, 0).getDate();
-          return new Date(`${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59`);
-        })();
-
+    // year=0 means all-time — no date bounds
     const conditions: ReturnType<typeof eq>[] = [
-      gte(claimPayments.paidAt, from),
-      lte(claimPayments.paidAt, to),
       isNull(transactions.deletedAt) as ReturnType<typeof eq>,
       ne(transactions.status, 'cancelled') as ReturnType<typeof eq>,
     ];
+    if (year !== 0) {
+      const from = month === 0
+        ? new Date(`${year}-01-01T00:00:00`)
+        : new Date(`${year}-${String(month).padStart(2, '0')}-01T00:00:00`);
+      const to = month === 0
+        ? new Date(`${year}-12-31T23:59:59`)
+        : (() => {
+            const lastDay = new Date(year, month, 0).getDate();
+            return new Date(`${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59`);
+          })();
+      conditions.push(gte(claimPayments.paidAt, from) as ReturnType<typeof eq>);
+      conditions.push(lte(claimPayments.paidAt, to) as ReturnType<typeof eq>);
+    }
     if (branchId) conditions.push(eq(transactions.branchId, branchId));
 
     const rows = await this.drizzle.db
       .select({
         method: claimPayments.method,
         total: sql<number>`COALESCE(SUM(${claimPayments.amount}), 0)`,
+        totalFee: sql<number>`COALESCE(SUM(${claimPayments.fee}), 0)`,
       })
       .from(claimPayments)
       .innerJoin(transactions, eq(claimPayments.transactionId, transactions.id))
@@ -619,19 +677,23 @@ export class TransactionsService {
       card: 0,
       bank_deposit: 0,
     };
+    const fees: Record<string, number> = { card: 0 };
     rows.forEach((r) => {
       collected[r.method] = Number(r.total);
+      if (r.method === 'card') fees.card = Number(r.totalFee);
     });
+    // Card net = gross collected - fee paid to bank
+    collected.card = Math.max(0, collected.card - fees.card);
 
     // Fetch bank deposit total separately (the deposits table tracks bank_deposit
     // amounts directly). Source-channel deductions are unreliable (upsertSingle
     // clamps new rows to 0 via Math.max), so we subtract from the correct channel
     // using the origin field.
     const depositConditions: ReturnType<typeof eq>[] = [
-      eq(deposits.year, year),
       eq(deposits.method, 'bank_deposit'),
+      ...(year !== 0 ? [eq(deposits.year, year)] : []),
       ...(branchId ? [eq(deposits.branchId, branchId)] : []),
-      ...(month !== 0 ? [eq(deposits.month, month)] : []),
+      ...(year !== 0 && month !== 0 ? [eq(deposits.month, month)] : []),
     ];
     const depositRows = await this.drizzle.db
       .select({
@@ -657,7 +719,8 @@ export class TransactionsService {
     return {
       cash: fromScaled(collected.cash),
       gcash: fromScaled(collected.gcash),
-      card: fromScaled(collected.card),
+      card: fromScaled(collected.card),          // net (after card fees deducted)
+      cardFee: fromScaled(fees.card),            // total card fees for the period
       bank_deposit: fromScaled(bankDepositTotal),
     };
   }
@@ -727,13 +790,16 @@ export class TransactionsService {
     const { from, to, fromDate, toDate } = this.getDateRange(year, month);
 
     // ---------- Shared conditions ----------
-    const txnBaseConditions = [
-      gte(transactions.createdAt, from),
-      lte(transactions.createdAt, to),
-      isNull(transactions.deletedAt),
+    const txnBaseConditions: ReturnType<typeof eq>[] = [
+      isNull(transactions.deletedAt) as ReturnType<typeof eq>,
     ];
+    // year=0 means all-time — skip date bounds
+    if (from && to) {
+      txnBaseConditions.push(gte(transactions.createdAt, from) as ReturnType<typeof eq>);
+      txnBaseConditions.push(lte(transactions.createdAt, to) as ReturnType<typeof eq>);
+    }
     if (branchId) txnBaseConditions.push(eq(transactions.branchId, branchId));
-    const activeTxnConditions = [...txnBaseConditions, ne(transactions.status, 'cancelled')];
+    const activeTxnConditions = [...txnBaseConditions, ne(transactions.status, 'cancelled') as ReturnType<typeof eq>];
 
     // ---------- Run all queries in parallel ----------
     const [
@@ -770,11 +836,14 @@ export class TransactionsService {
 
       // 4. Monthly expenses total (branch-scoped via staff membership)
       (async () => {
-        const dateRange = and(
-          gte(expenses.dateKey, fromDate),
-          lte(expenses.dateKey, toDate),
-          isNull(expenses.deletedAt),
-        );
+        // year=0 = all-time: no date bounds on expenses
+        const baseConds: ReturnType<typeof eq>[] = [
+          isNull(expenses.deletedAt) as ReturnType<typeof eq>,
+        ];
+        if (fromDate && toDate) {
+          baseConds.push(gte(expenses.dateKey, fromDate) as ReturnType<typeof eq>);
+          baseConds.push(lte(expenses.dateKey, toDate) as ReturnType<typeof eq>);
+        }
         if (branchId) {
           const staffRows = await this.drizzle.db
             .select({ id: usersTable.id })
@@ -785,12 +854,12 @@ export class TransactionsService {
           return this.drizzle.db
             .select({ total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
             .from(expenses)
-            .where(and(dateRange, inArray(expenses.staffId, staffIds)));
+            .where(and(...baseConds, inArray(expenses.staffId, staffIds)));
         }
         return this.drizzle.db
           .select({ total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
           .from(expenses)
-          .where(dateRange);
+          .where(and(...baseConds));
       })(),
 
       // 5. Today's collections (list)
@@ -875,6 +944,10 @@ export class TransactionsService {
   }
 
   private getDateRange(year: number, month: number) {
+    // year=0 means all-time — no date bounds
+    if (year === 0) {
+      return { from: null, to: null, fromDate: null, toDate: null };
+    }
     const from = month === 0
       ? new Date(`${year}-01-01T00:00:00`)
       : new Date(`${year}-${String(month).padStart(2, '0')}-01T00:00:00`);
@@ -1076,6 +1149,12 @@ export class TransactionsService {
 
     const scaledAmount = toScaled(dto.amount);
 
+    // Compute card fee server-side — never trust frontend for financial calculations
+    const isCard = dto.method === 'card';
+    const { fee, feePercent } = isCard
+      ? computeCardFee(scaledAmount, dto.cardBank)
+      : { fee: 0, feePercent: '0' };
+
     const [payment] = await this.drizzle.db
       .insert(claimPayments)
       .values({
@@ -1083,6 +1162,9 @@ export class TransactionsService {
         method: dto.method,
         amount: scaledAmount,
         referenceNumber: dto.referenceNumber ?? null,
+        cardBank: isCard ? (dto.cardBank ?? null) : null,
+        fee,
+        feePercent,
       })
       .returning();
 
@@ -1116,6 +1198,7 @@ export class TransactionsService {
           method: dto.method,
           amount: fromScaled(payment.amount),
           referenceNumber: dto.referenceNumber ?? null,
+          ...(isCard && { cardBank: dto.cardBank ?? null, fee: fromScaled(fee), feePercent }),
         },
         balanceBefore: txn.paid,
         balanceAfter: fromScaled(newPaidScaled),
@@ -1132,6 +1215,96 @@ export class TransactionsService {
     });
 
     return { ...payment, amount: fromScaled(payment.amount) };
+  }
+
+  /**
+   * Superadmin-only: correct the payment method (and optionally reference number) on
+   * an existing claim_payment record. The amount is never changed here — only the method.
+   *
+   * Edge case — bank_deposit:
+   *   The dashboard's bank_deposit collection total comes from the `deposits` table, NOT
+   *   from claim_payments. Changing a payment's method to/from bank_deposit in claim_payments
+   *   will NOT automatically update the deposits table, which could cause a mismatch in
+   *   the collection report. The caller (controller) is responsible for surfacing this
+   *   warning to the user; this method records it in the audit log.
+   *
+   * All other method changes (cash ↔ gcash ↔ card) are safe — collection totals update
+   * automatically on the next dashboard load since all queries hit the DB live.
+   */
+  async updatePaymentMethod(
+    txnId: number,
+    paymentId: number,
+    dto: { method: string; referenceNumber?: string; cardBank?: string },
+    performedBy?: string,
+  ) {
+    const txn = await this.findOne(txnId);
+
+    const [existing] = await this.drizzle.db
+      .select()
+      .from(claimPayments)
+      .where(and(eq(claimPayments.id, paymentId), eq(claimPayments.transactionId, txnId)));
+
+    if (!existing) {
+      throw new NotFoundException(`Payment ${paymentId} not found on transaction ${txnId}`);
+    }
+
+    // Allow same-method edits when card bank is changing (fee recomputation needed)
+    const cardBankChanged =
+      existing.method === 'card' &&
+      dto.method === 'card' &&
+      (dto.cardBank ?? '') !== (existing.cardBank ?? '');
+    if (existing.method === dto.method && !cardBankChanged) {
+      // Only referenceNumber changed — update it without touching fee
+      const [updated] = await this.drizzle.db
+        .update(claimPayments)
+        .set({ referenceNumber: dto.referenceNumber !== undefined ? dto.referenceNumber : existing.referenceNumber })
+        .where(eq(claimPayments.id, paymentId))
+        .returning();
+      return { ...updated, amount: fromScaled(updated.amount) };
+    }
+
+    // Recompute fee when changing to/from card — clear fee for non-card methods
+    const isNewCard = dto.method === 'card';
+    const { fee: newFee, feePercent: newFeePercent } = isNewCard
+      ? computeCardFee(existing.amount, dto.cardBank)
+      : { fee: 0, feePercent: '0' };
+
+    const [updated] = await this.drizzle.db
+      .update(claimPayments)
+      .set({
+        method: dto.method,
+        referenceNumber: dto.referenceNumber !== undefined ? dto.referenceNumber : existing.referenceNumber,
+        cardBank: isNewCard ? (dto.cardBank ?? null) : null,
+        fee: newFee,
+        feePercent: newFeePercent,
+      })
+      .where(eq(claimPayments.id, paymentId))
+      .returning();
+
+    const branchId = performedBy ? await this.users.getBranchId(performedBy) : null;
+    const bankDepositInvolved = existing.method === 'bank_deposit' || dto.method === 'bank_deposit';
+
+    await this.audit.log({
+      action: 'update',
+      auditType: AUDIT_TYPE.PAYMENT_ADDED, // reuse closest audit type
+      entityType: 'claim_payment',
+      entityId: String(paymentId),
+      source: 'admin',
+      performedBy,
+      branchId: branchId ?? undefined,
+      details: {
+        txnNumber: txn.number,
+        paymentId,
+        from: existing.method,
+        to: dto.method,
+        amount: fromScaled(existing.amount),
+        ...(bankDepositInvolved && {
+          warning: 'bank_deposit involved — deposits table may need manual reconciliation',
+        }),
+      },
+    });
+
+    return { ...updated, amount: fromScaled(updated.amount) };
   }
 
   async sendPickupReadySms(id: number, performedBy?: string): Promise<{ phone: string }> {

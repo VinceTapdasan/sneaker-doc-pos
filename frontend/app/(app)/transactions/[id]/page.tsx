@@ -3,7 +3,7 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeftIcon, PlusIcon, EnvelopeIcon, PaperPlaneTiltIcon, TrashIcon, CameraIcon, UploadSimpleIcon, ArrowCounterClockwiseIcon, WarningIcon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, PlusIcon, EnvelopeIcon, PaperPlaneTiltIcon, TrashIcon, CameraIcon, UploadSimpleIcon, ArrowCounterClockwiseIcon, WarningIcon, PencilSimpleIcon } from '@phosphor-icons/react';
 import { Lightbox } from '@/components/ui/lightbox';
 import Link from 'next/link';
 import { formatPeso, formatDate, formatDatetime, formatAddress, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
@@ -33,17 +33,19 @@ import {
   useUpdateTransactionMutation,
   useUpdateItemStatusMutation,
   useAddPaymentMutation,
+  useUpdatePaymentMethodMutation,
   useDeleteTransactionMutation,
   useRestoreTransactionMutation,
 } from '@/hooks/useTransactionsQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { useUploadPhotoMutation, useUploadTxnPhotoMutation } from '@/hooks/useUploadPhoto';
 import { useAssignableUsersQuery } from '@/hooks/useUsersQuery';
-import { PAYMENT_METHOD_VALUES, TRANSACTION_STATUS } from '@/lib/constants';
+import { usePromosQuery } from '@/hooks/usePromosQuery';
+import { PAYMENT_METHOD_VALUES, TRANSACTION_STATUS, CARD_BANK_OPTIONS, getCardFeeRatePreview } from '@/lib/constants';
 import { toPng } from 'html-to-image';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { generateGmailLink, generateGmailLinkNoBody, EMAIL_TEMPLATES, EMAIL_TEMPLATE_LABELS } from '@/utils/email';
+import { generateGmailLink, generateGmailLinkNoBody, openLinkReliably, EMAIL_TEMPLATES, EMAIL_TEMPLATE_LABELS } from '@/utils/email';
 import { ClaimStubPreview } from '@/components/transactions/ClaimStubPreview';
 import type { EmailTemplateKey } from '@/utils/email';
 import type { PaymentMethod } from '@/lib/types';
@@ -55,6 +57,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const router = useRouter();
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [paymentCardBank, setPaymentCardBank] = useState(''); // '' = default (3%), 'bpi' = 3.5%
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentRef, setPaymentRef] = useState('');
   const [paymentError, setPaymentError] = useState('');
@@ -70,6 +73,18 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
+
+  // Superadmin: edit payment method on an existing payment
+  const [editPaymentDialog, setEditPaymentDialog] = useState<{
+    open: boolean;
+    paymentId: number | null;
+    currentMethod: string;
+    currentRef: string;
+    currentCardBank: string;
+  }>({ open: false, paymentId: null, currentMethod: 'cash', currentRef: '', currentCardBank: '' });
+  const [editPaymentMethod, setEditPaymentMethod] = useState<string>('cash');
+  const [editPaymentRef, setEditPaymentRef] = useState('');
+  const [editCardBank, setEditCardBank] = useState('');
   const [smsSending, setSmsSending] = useState(false);
   const [smsConfirmed, setSmsConfirmed] = useState(false);
 
@@ -85,7 +100,11 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
+  const isSuperadmin = currentUser?.userType === 'superadmin';
   const { data: assignableUsers = [] } = useAssignableUsersQuery();
+  const { data: activePromos = [] } = usePromosQuery();
+  const [promoEditing, setPromoEditing] = useState(false);
+  const [promoSelected, setPromoSelected] = useState('none');
 
   const { data: txn, isLoading, isFetching } = useTransactionDetailQuery(id);
   const updateTxnMut = useUpdateTransactionMutation(id);
@@ -231,7 +250,20 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const addPaymentMut = useAddPaymentMutation(id, () => {
     setPaymentDialogOpen(false);
     setPaymentAmount('');
+    setPaymentCardBank('');
     setPaymentError('');
+  });
+
+  const updatePaymentMethodMut = useUpdatePaymentMethodMutation(id, (bankDepositWarning) => {
+    setEditPaymentDialog({ open: false, paymentId: null, currentMethod: 'cash', currentRef: '', currentCardBank: '' });
+    if (bankDepositWarning) {
+      toast.warning('Payment method updated', {
+        description: 'This payment involved bank deposit. Please review the deposits record manually — it may need adjustment.',
+        duration: 8000,
+      });
+    } else {
+      toast.success('Payment method updated');
+    }
   });
 
   if (isLoading || (isFetching && !txn)) {
@@ -539,6 +571,54 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                   </span>
                 </div>
               )}
+              {/* Superadmin: apply / change / remove promo inline */}
+              {isSuperadmin && txn.status !== 'cancelled' && txn.status !== 'claimed' && (
+                promoEditing ? (
+                  <div className="flex flex-col gap-2 pt-1">
+                    <label className="text-xs font-medium text-zinc-700">Change Promo</label>
+                    <Select value={promoSelected} onValueChange={setPromoSelected}>
+                      <SelectTrigger className="h-8 text-sm border-zinc-200">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No promo</SelectItem>
+                        {activePromos.map((p) => (
+                          <SelectItem key={p.id} value={String(p.id)}>
+                            {p.code} · -{parseFloat(p.percent).toFixed(0)}%
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="dark"
+                        disabled={updateTxnMut.isPending}
+                        onClick={() => {
+                          const newPromoId = promoSelected === 'none' ? null : parseInt(promoSelected, 10);
+                          updateTxnMut.mutate({ promoId: newPromoId }, {
+                            onSuccess: () => setPromoEditing(false),
+                          });
+                        }}
+                      >
+                        {updateTxnMut.isPending ? <Spinner /> : 'Apply'}
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => setPromoEditing(false)}>Cancel</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="text-xs text-zinc-400 hover:text-zinc-600 underline underline-offset-2 text-left"
+                    onClick={() => {
+                      setPromoSelected(txn.promoId ? String(txn.promoId) : 'none');
+                      setPromoEditing(true);
+                    }}
+                  >
+                    {txn.promo ? 'Change promo' : 'Add promo'}
+                  </button>
+                )
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-zinc-500">Paid</span>
                 <span className="font-mono text-emerald-600">{formatPeso(txn.paid)}</span>
@@ -627,7 +707,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                     <div className="grid grid-cols-2 gap-2">
                       <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-medium text-zinc-700">Method</label>
-                        <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
+                        <Select value={paymentMethod} onValueChange={(v) => { setPaymentMethod(v as PaymentMethod); setPaymentCardBank(''); }}>
                           <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
                             <SelectValue />
                           </SelectTrigger>
@@ -649,6 +729,22 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                         />
                       </div>
                     </div>
+                    {/* Card bank selector — only shown when method=card */}
+                    {paymentMethod === 'card' && (
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-zinc-700">Card Bank</label>
+                        <Select value={paymentCardBank} onValueChange={setPaymentCardBank}>
+                          <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CARD_BANK_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-medium text-zinc-700">Amount (₱)</label>
                       <input
@@ -664,6 +760,24 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                         placeholder="0.00"
                         autoFocus
                       />
+                      {/* Card fee preview — display only, authoritative value computed server-side */}
+                      {paymentMethod === 'card' && paymentAmount && parseFloat(paymentAmount) > 0 && (() => {
+                        const rate = getCardFeeRatePreview(paymentCardBank);
+                        const feeAmt = parseFloat(paymentAmount) * rate;
+                        const netAmt = parseFloat(paymentAmount) - feeAmt;
+                        return (
+                          <div className="rounded-md bg-violet-50 border border-violet-100 px-3 py-2 text-xs space-y-0.5">
+                            <div className="flex justify-between text-violet-700">
+                              <span>Card fee ({(rate * 100).toFixed(1)}%)</span>
+                              <span className="font-mono">-{formatPeso(feeAmt.toFixed(2))}</span>
+                            </div>
+                            <div className="flex justify-between font-medium text-violet-900">
+                              <span>Net received</span>
+                              <span className="font-mono">{formatPeso(netAmt.toFixed(2))}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                       {paymentError && (
                         <p className="text-xs text-red-500">{paymentError}</p>
                       )}
@@ -687,6 +801,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                           method: paymentMethod,
                           amount: paymentAmount,
                           ...(paymentRef.trim() ? { referenceNumber: paymentRef.trim() } : {}),
+                          ...(paymentMethod === 'card' ? { cardBank: paymentCardBank || undefined } : {}),
                         });
                       }}
                     >
@@ -706,21 +821,142 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               </h2>
               <div className="space-y-2">
                 {txn.payments.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between">
-                    <div>
+                  <div key={p.id} className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
                       <p className="text-xs font-medium text-zinc-700">
-                        {PAYMENT_METHOD_LABELS[p.method]}
+                        {p.method === 'card'
+                          ? `Card${p.cardBank ? ` · ${p.cardBank.toUpperCase()}` : ''}`
+                          : (PAYMENT_METHOD_LABELS[p.method] ?? p.method)}
                         {p.referenceNumber && (
                           <span className="ml-1.5 font-mono font-normal text-zinc-400">#{p.referenceNumber}</span>
                         )}
                       </p>
+                      {p.method === 'card' && Number(p.fee) > 0 && (
+                        <p className="text-xs text-violet-500 font-mono">
+                          fee {p.feePercent}% · -{formatPeso(p.fee)}
+                        </p>
+                      )}
                       <p className="text-xs text-zinc-400">{formatDatetime(p.paidAt)}</p>
                     </div>
-                    <span className="font-mono text-sm text-zinc-950">{formatPeso(p.amount)}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-mono text-sm text-zinc-950">{formatPeso(p.amount)}</span>
+                      {isSuperadmin && (
+                        <button
+                          type="button"
+                          title="Edit payment method"
+                          className="text-zinc-400 hover:text-zinc-700 transition-colors"
+                          onClick={() => {
+                            setEditPaymentMethod(p.method);
+                            setEditPaymentRef(p.referenceNumber ?? '');
+                            setEditCardBank(p.cardBank ?? '');
+                            setEditPaymentDialog({ open: true, paymentId: p.id, currentMethod: p.method, currentRef: p.referenceNumber ?? '', currentCardBank: p.cardBank ?? '' });
+                          }}
+                        >
+                          <PencilSimpleIcon size={13} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
+          )}
+
+          {/* Superadmin: edit payment method dialog */}
+          {isSuperadmin && (
+            <Dialog
+              open={editPaymentDialog.open}
+              onOpenChange={(open) => {
+                if (!open) setEditPaymentDialog({ open: false, paymentId: null, currentMethod: 'cash', currentRef: '', currentCardBank: '' });
+              }}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle className="text-base">Edit Payment Method</DialogTitle>
+                  <DialogDescription className="text-xs text-zinc-500">
+                    Correct an incorrect payment method. Amount is unchanged.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 pt-1">
+                  {(editPaymentDialog.currentMethod === 'bank_deposit' || editPaymentMethod === 'bank_deposit') && (
+                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      <WarningIcon size={14} className="shrink-0 mt-0.5" />
+                      <span>
+                        Bank deposit totals are tracked separately in the deposits table. This change won&apos;t automatically update those records — please review the deposits section manually after saving.
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-zinc-700">Payment Method</label>
+                    <Select value={editPaymentMethod} onValueChange={setEditPaymentMethod}>
+                      <SelectTrigger className="h-9 text-sm border-zinc-200">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="gcash">GCash</SelectItem>
+                        <SelectItem value="card">Card</SelectItem>
+                        <SelectItem value="bank_deposit">Bank Deposit</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-zinc-700">Reference # <span className="font-normal text-zinc-400">(optional)</span></label>
+                    <input
+                      type="text"
+                      className="h-9 w-full rounded-md border border-zinc-200 px-3 text-sm outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-1"
+                      placeholder="e.g. GCash ref number"
+                      value={editPaymentRef}
+                      onChange={(e) => setEditPaymentRef(e.target.value)}
+                    />
+                  </div>
+                  {editPaymentMethod === 'card' && (
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium text-zinc-700">Card Bank</label>
+                      <Select value={editCardBank} onValueChange={setEditCardBank}>
+                        <SelectTrigger className="h-9 text-sm border-zinc-200">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CARD_BANK_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="dark"
+                      disabled={updatePaymentMethodMut.isPending || (
+                        editPaymentMethod === editPaymentDialog.currentMethod &&
+                        editPaymentRef === editPaymentDialog.currentRef &&
+                        (editPaymentMethod !== 'card' || editCardBank === editPaymentDialog.currentCardBank)
+                      )}
+                      onClick={() => {
+                        if (!editPaymentDialog.paymentId) return;
+                        updatePaymentMethodMut.mutate({
+                          paymentId: editPaymentDialog.paymentId,
+                          method: editPaymentMethod,
+                          referenceNumber: editPaymentRef.trim() || undefined,
+                          cardBank: editPaymentMethod === 'card' ? (editCardBank || undefined) : undefined,
+                        });
+                      }}
+                    >
+                      {updatePaymentMethodMut.isPending ? <Spinner /> : 'Save'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setEditPaymentDialog({ open: false, paymentId: null, currentMethod: 'cash', currentRef: '', currentCardBank: '' })}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           )}
 
           {/* Assigned Staff — all roles can assign */}
@@ -861,9 +1097,10 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                   onClick={() => {
                     if (emailTemplate === EMAIL_TEMPLATES.claim_stub) {
                       const link = generateGmailLinkNoBody(txn, EMAIL_TEMPLATES.claim_stub);
-                      // Open Gmail synchronously to avoid mobile popup blocker,
-                      // then attempt clipboard copy in the background
-                      window.open(link, '_blank');
+                      // Use openLinkReliably (anchor element) instead of window.open —
+                      // works in PWA standalone mode and avoids mobile popup blockers.
+                      // Open synchronously first, then attempt clipboard copy in background.
+                      openLinkReliably(link);
                       (async () => {
                         try {
                           if (!stubRef.current) return;
@@ -877,7 +1114,9 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                         }
                       })();
                     } else {
-                      window.open(generateGmailLink(txn, emailTemplate), '_blank');
+                      // Use openLinkReliably — window.open with long body-encoded URLs
+                      // is blocked or silently fails on mobile browsers and PWA standalone mode.
+                      openLinkReliably(generateGmailLink(txn, emailTemplate));
                     }
                   }}
                 >

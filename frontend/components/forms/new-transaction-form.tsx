@@ -108,7 +108,7 @@ export function NewTransactionForm() {
 
   const { data: currentUser } = useCurrentUserQuery();
   const { data: assignableUsers = [] } = useAssignableUsersQuery();
-  const otherAssignableUsers = assignableUsers.filter((u) => u.id !== currentUser?.id);
+  // Include all assignable users (self + others) — default is Unassigned (null/empty)
 
   const [sameServiceToAll, setSameServiceToAll] = useState(false);
   const [customerStep, setCustomerStep] = useState<'phone' | 'details'>('phone');
@@ -548,7 +548,7 @@ export function NewTransactionForm() {
               </div>
             </div>
 
-            {otherAssignableUsers.length > 0 && (
+            {assignableUsers.length > 0 && (
               <div className="bg-white border border-zinc-200 rounded-lg p-5">
                 <h2 className="text-sm font-semibold text-zinc-950 mb-3">Assign To</h2>
                 <Select
@@ -556,13 +556,15 @@ export function NewTransactionForm() {
                   onValueChange={(v) => setValue('staffId', v === 'none' ? '' : v)}
                 >
                   <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
-                    <SelectValue placeholder="Self (default)" />
+                    <SelectValue placeholder="Unassigned" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Self (default)</SelectItem>
-                    {otherAssignableUsers.map((u) => (
+                    <SelectItem value="none">Unassigned</SelectItem>
+                    {assignableUsers.map((u) => (
                       <SelectItem key={u.id} value={u.id}>
-                        {u.nickname || u.fullName ? toTitleCase(u.nickname ?? u.fullName ?? '') : u.email}
+                        {u.id === currentUser?.id
+                          ? `${u.nickname || u.fullName ? toTitleCase(u.nickname ?? u.fullName ?? '') : u.email} (me)`
+                          : u.nickname || u.fullName ? toTitleCase(u.nickname ?? u.fullName ?? '') : u.email}
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -11,6 +11,7 @@ import {
   Req,
   UseGuards,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -18,6 +19,7 @@ import { Roles } from '../auth/roles.decorator';
 import type { AuthedRequest } from '../auth/auth.types';
 import { ExpensesService } from './expenses.service';
 import { UsersService } from '../users/users.service';
+import { UploadsService } from '../uploads/uploads.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 
@@ -26,6 +28,7 @@ export class ExpensesController {
   constructor(
     private readonly expensesService: ExpensesService,
     private readonly usersService: UsersService,
+    private readonly uploadsService: UploadsService,
   ) {}
 
   // superadmin always sees all; everyone else is scoped to their branch
@@ -69,6 +72,18 @@ export class ExpensesController {
       parseInt(month, 10),
       branchId,
     );
+  }
+
+  // Generate a presigned URL for uploading an expense receipt photo
+  @UseGuards(SupabaseAuthGuard)
+  @Post('upload-url')
+  async getUploadUrl(@Body('extension') extension: string) {
+    if (!extension) throw new BadRequestException('extension is required');
+    const validExtRe = /^\.?(jpg|jpeg|png|webp|heic)$/i;
+    if (!validExtRe.test(extension)) {
+      throw new BadRequestException('Only image files allowed (jpg, jpeg, png, webp, heic)');
+    }
+    return this.uploadsService.createExpensePresignedUrl(extension);
   }
 
   // Any authenticated user can log an expense (staff via POS)

@@ -1,7 +1,7 @@
 'use client';
 
 import { type ColumnDef } from '@tanstack/react-table';
-import { TrashIcon, ReceiptIcon, PencilSimpleIcon } from '@phosphor-icons/react';
+import { TrashIcon, ReceiptIcon, PencilSimpleIcon, ImageIcon } from '@phosphor-icons/react';
 import { formatPeso, PAYMENT_METHOD_LABELS } from '@/lib/utils';
 import { toTitleCase } from '@/utils/text';
 import type { Expense } from '@/lib/types';
@@ -70,6 +70,27 @@ export const createExpenseColumns = ({
     cell: ({ row }) => (
       <span className="block text-right font-mono text-zinc-950">{formatPeso(row.original.amount)}</span>
     ),
+  },
+  {
+    id: 'receipt',
+    header: '',
+    cell: ({ row }) => {
+      const url = row.original.photoUrl;
+      if (!url) return null;
+      return (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-blue-600 hover:bg-blue-50 transition-colors"
+          title="View receipt"
+        >
+          <ImageIcon size={13} />
+          <span className="hidden sm:inline">Receipt</span>
+        </a>
+      );
+    },
   },
   {
     id: 'actions',

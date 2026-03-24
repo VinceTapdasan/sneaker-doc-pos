@@ -71,3 +71,29 @@ export const MONETARY_AUDIT_TYPES: AuditType[] = [
   AUDIT_TYPE.TRANSACTION_CREATED,
   AUDIT_TYPE.PAYMENT_ADDED,
 ];
+
+// ---------------------------------------------------------------------------
+// Card payment fee rates (server-side only — never computed on frontend)
+// Key = cardBank value stored in claim_payments.card_bank
+// null/undefined key = default rate (generic card)
+// To add a new bank: add an entry here, no schema change needed
+// ---------------------------------------------------------------------------
+export const CARD_BANK_FEES: Record<string, number> = {
+  bpi: 0.035,  // BPI: 3.5%
+};
+export const CARD_DEFAULT_FEE_RATE = 0.03; // 3% for all other banks / no bank specified
+
+export function getCardFeeRate(cardBank: string | null | undefined): number {
+  if (!cardBank) return CARD_DEFAULT_FEE_RATE;
+  return CARD_BANK_FEES[cardBank.toLowerCase()] ?? CARD_DEFAULT_FEE_RATE;
+}
+
+export function computeCardFee(scaledAmount: number, cardBank: string | null | undefined): {
+  fee: number;
+  feePercent: string;
+} {
+  const rate = getCardFeeRate(cardBank);
+  const fee = Math.round(scaledAmount * rate);
+  const feePercent = (rate * 100).toFixed(2); // e.g. '3.00' or '3.50'
+  return { fee, feePercent };
+}

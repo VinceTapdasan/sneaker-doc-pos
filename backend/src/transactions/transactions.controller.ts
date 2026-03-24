@@ -24,6 +24,7 @@ import { UsersService } from '../users/users.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
+import { UpdatePaymentMethodDto } from './dto/update-payment-method.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 import { AddPhotoDto } from './dto/add-photo.dto';
 
@@ -42,7 +43,11 @@ export class TransactionsController {
     if (user.userType === 'superadmin') {
       return queryBranchId ? parseInt(queryBranchId, 10) : undefined;
     }
-    return user.branchId ?? undefined;
+    // Non-superadmin must be assigned to a branch — null branchId means incomplete onboarding
+    if (user.branchId == null) {
+      throw new ForbiddenException('Your account is not yet assigned to a branch. Please contact your administrator.');
+    }
+    return user.branchId;
   }
 
   // Verify the calling user has branch-level access to a specific transaction.
@@ -238,6 +243,31 @@ export class TransactionsController {
     const txn = await this.transactionsService.findOne(id);
     await this.verifyBranchAccess(req.user.id, txn.branchId);
     return this.transactionsService.addPayment(id, dto, req.user?.id);
+  }
+
+  /**
+   * Superadmin-only: correct an existing payment's method (and optionally reference number).
+   * Amount is never changed. Safe for cash/gcash/card changes — reports update automatically.
+   * Changes involving bank_deposit require manual deposit record reconciliation (surfaced
+   * in the response via `bankDepositWarning` flag).
+   */
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles('superadmin')
+  @Patch(':id/payments/:paymentId/method')
+  async updatePaymentMethod(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('paymentId', ParseIntPipe) paymentId: number,
+    @Body() dto: UpdatePaymentMethodDto,
+    @Req() req: AuthedRequest,
+  ) {
+    const txn = await this.transactionsService.findOne(id);
+    await this.verifyBranchAccess(req.user.id, txn.branchId);
+    const result = await this.transactionsService.updatePaymentMethod(id, paymentId, dto, req.user?.id);
+    // Surface the bank_deposit warning to the caller so the frontend can show it
+    const bankDepositWarning =
+      (txn.payments?.find((p) => p.id === paymentId)?.method === 'bank_deposit') ||
+      dto.method === 'bank_deposit';
+    return { ...result, bankDepositWarning };
   }
 
   @UseGuards(SupabaseAuthGuard)

@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { RAW_MAX_SIZE_MB, isValidImageType, compressWithFallback } from '@/utils/photo';
 import { transactionDetailKey } from './useTransactionsQuery';
 
-async function putToStorage(signedUrl: string, body: File, attempt = 1): Promise<void> {
+export async function putToStorage(signedUrl: string, body: File, attempt = 1): Promise<void> {
   const res = await fetch(signedUrl, {
     method: 'PUT',
     body,

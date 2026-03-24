@@ -147,3 +147,22 @@ export function generateGmailLinkNoBody(ctx: TransactionEmailContext, templateKe
   const params = new URLSearchParams({ view: 'cm', to: ctx.customerEmail, su: subject });
   return `https://mail.google.com/mail/u/?authuser=${SENDER_EMAIL}&${params.toString()}`;
 }
+
+/**
+ * Opens a URL in a new tab in a way that works reliably across:
+ * - Desktop browsers
+ * - Mobile browsers (iOS Safari, Android Chrome)
+ * - PWA standalone mode (where window.open is often blocked)
+ *
+ * Uses a temporary anchor element instead of window.open to bypass
+ * mobile popup blockers and PWA restrictions.
+ */
+export function openLinkReliably(url: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}

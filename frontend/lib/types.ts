@@ -52,6 +52,8 @@ export interface Promo {
   dateFrom: string | null;
   dateTo: string | null;
   isActive: boolean;
+  maxUses: number | null;
+  usageCount?: number;  // computed by backend
   createdAt: string;
   updatedAt: string | null;
 }
@@ -76,6 +78,10 @@ export interface ClaimPayment {
   amount: string;
   referenceNumber: string | null;
   paidAt: string;
+  // Card fee fields — populated when method='card', zero otherwise
+  cardBank: string | null;
+  fee: string;        // scaled string, e.g. '3000' = ₱30.00
+  feePercent: string; // e.g. '3.00' or '3.50'
 }
 
 export interface TransactionPhoto {
@@ -127,6 +133,7 @@ export interface Transaction {
   items?: TransactionItem[];
   payments?: ClaimPayment[];
   photos?: TransactionPhoto[];
+  itemCount?: number;
 }
 
 export interface Expense {
@@ -137,6 +144,7 @@ export interface Expense {
   method: string | null;
   amount: string;
   staffId: string | null;
+  photoUrl?: string | null;
   createdAt: string;
 }
 

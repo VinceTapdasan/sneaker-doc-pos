@@ -78,6 +78,16 @@ const upcomingColumns: ColumnDef<Transaction>[] = [
     cell: ({ row }) => <StatusBadge status={row.original.status} />,
   },
   {
+    id: 'itemCount',
+    header: 'Items',
+    cell: ({ row }) => {
+      const count = row.original.itemCount ?? 0;
+      return (
+        <span className="text-sm text-zinc-600">{count} {count === 1 ? 'item' : 'items'}</span>
+      );
+    },
+  },
+  {
     accessorKey: 'total',
     header: () => <span className="block text-right">Balance</span>,
     cell: ({ row }) => {
@@ -298,6 +308,9 @@ export default function UpcomingPickupsPage() {
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="font-mono text-xs text-zinc-400">#{txn.number}</span>
                     <StatusBadge status={txn.status} />
+                    {txn.itemCount != null && (
+                      <span className="text-[10px] text-zinc-400">{txn.itemCount} {txn.itemCount === 1 ? 'item' : 'items'}</span>
+                    )}
                   </div>
                   <p className="text-sm font-medium text-zinc-950 truncate">
                     {toTitleCase(txn.customerName) || '—'}

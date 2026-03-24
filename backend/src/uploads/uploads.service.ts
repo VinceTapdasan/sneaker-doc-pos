@@ -64,4 +64,23 @@ export class UploadsService {
       publicUrl,
     };
   }
+
+  async createExpensePresignedUrl(extension: string) {
+    const bucket = this.config.getOrThrow<string>('SUPABASE_STORAGE_BUCKET');
+    const ext = extension.toLowerCase().replace(/^\./, '');
+    const path = `expense-receipts/${Date.now()}.${ext}`;
+
+    const { data, error } = await this.supabase.db.storage
+      .from(bucket)
+      .createSignedUploadUrl(path);
+
+    if (error || !data) {
+      throw new Error(error?.message ?? 'Failed to generate upload URL');
+    }
+
+    const supabaseUrl = this.config.getOrThrow<string>('SUPABASE_URL').replace(/\/$/, '');
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${path}`;
+
+    return { signedUrl: data.signedUrl, token: data.token, path, publicUrl };
+  }
 }

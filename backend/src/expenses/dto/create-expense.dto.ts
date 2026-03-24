@@ -19,4 +19,8 @@ export class CreateExpenseDto {
 
   @IsNumberString()
   amount: string;
+
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
 }

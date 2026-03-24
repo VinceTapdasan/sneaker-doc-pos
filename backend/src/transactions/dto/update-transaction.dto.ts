@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsNumberString, Matches } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsNumberString, Matches, ValidateIf } from 'class-validator';
 
 export class UpdateTransactionDto {
   @IsOptional()
@@ -39,8 +39,9 @@ export class UpdateTransactionDto {
   paid?: string;
 
   @IsOptional()
+  @ValidateIf((o) => o.promoId !== null)
   @IsNumber()
-  promoId?: number;
+  promoId?: number | null;
 
   @IsOptional()
   @IsString()

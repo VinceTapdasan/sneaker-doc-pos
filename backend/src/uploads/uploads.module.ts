@@ -10,5 +10,6 @@ import { UsersModule } from '../users/users.module';
   imports: [DbModule, AuthModule, UsersModule],
   controllers: [UploadsController],
   providers: [UploadsService],
+  exports: [UploadsService],
 })
 export class UploadsModule {}
