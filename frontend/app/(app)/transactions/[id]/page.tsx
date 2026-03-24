@@ -1395,7 +1395,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                                   <SelectValue placeholder="Select service…" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="">— No change —</SelectItem>
+                                  <SelectItem value="__none__">— No change —</SelectItem>
                                   {(allServices as Service[]).map((s) => (
                                     <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
                                   ))}
@@ -1493,7 +1493,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                       items: editDraftItems.map((i) => ({
                         id: i.id,
                         ...(i.shoeDescription.trim() && { shoeDescription: i.shoeDescription.trim() }),
-                        ...(i.serviceId && { serviceId: parseInt(i.serviceId, 10) }),
+                        ...(i.serviceId && i.serviceId !== '__none__' && { serviceId: parseInt(i.serviceId, 10) }),
                       })),
                       payments: editDraftPayments.map((p) => ({
                         id: p.id,
